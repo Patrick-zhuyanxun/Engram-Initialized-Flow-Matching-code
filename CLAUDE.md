@@ -171,7 +171,17 @@ papers/
 **Principles**:
 - All Table numbers stay `[PLACEHOLDER]` until experiments are complete
 - All citations verified via Zotero or WebSearch before writing
-- `notes/` records design decisions — not final paper content
+- `notes/` is the **ground truth** for current method — `src/sections/` LaTeX follows from it
+- **When any concept changes** (new experiments, new findings, method adjustments): update `papers/pp_fm/notes/methodology_blueprint.md` first
+
+### Current Locked Concepts (aligned 2026-04-09)
+
+| Concept | Current Implementation |
+|---------|----------------------|
+| Engram key | **Composite key** — verb phrases sorted + joined (`pick_up_place`); no multi-key averaging |
+| Loss function | **Target-prediction** — model directly predicts clean action; not velocity regression |
+| Centering | **Global-mean centering** — subtract mean of all engrams to reduce `DomainAwareLinear` bias |
+| Data scope | **LIBERO only** — cross-embodiment engram construction not yet claimed |
 
 ## Code Style
 
