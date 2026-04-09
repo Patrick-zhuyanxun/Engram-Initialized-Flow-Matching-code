@@ -1,0 +1,43 @@
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Training outputs (large, machine-specific)
+outputs/
+
+# Upstream repos (not part of this project's code)
+lerobot/
+LIBERO/
+
+# Robot arm plugins (separate repos)
+lerobot_robot_tm/
+lerobot_robot_tm12/
+
+# Earlier SimVLA experiment (superseded by EI-FM)
+lerobot_policy_simvla/
+
+# Model checkpoints and weights (download separately via HuggingFace)
+checkpoints/
+
+# Papers (separate repo / not code)
+papers/
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# WandB / experiment logs
+wandb/
