@@ -355,7 +355,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
     # ────────────────────────────────────────────────────────────────────
     def forward(  # type: ignore[override]
         self, batch: dict[str, Tensor], **kwargs
-    ) -> dict[str, Tensor]:
+    ) -> tuple[Tensor, dict[str, float]]:
         """Training forward - consumes the LeRobot-native batch layout.
 
         Expected keys (all already windowed to ``[B, T=seq_len, ...]`` by
@@ -390,7 +390,8 @@ class HFRVLAPolicy(SmolVLAPolicy):
             dino_patches=dino_patches,
         )
         losses = self._compute_losses(fr_out, a_base, a_expert, contact_label)
-        return losses
+        output_dict = {key: value.detach().item() for key, value in losses.items()}
+        return losses["loss"], output_dict
 
     def set_training_step(self, step: int) -> None:
         """Curriculum controller. Called by train_via_lerobot.py per step."""
