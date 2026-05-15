@@ -84,6 +84,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--state-key", default=OBS_STATE)
     parser.add_argument("--action-key", default=ACTION)
     parser.add_argument("--max-episodes", type=int, default=None)
+    parser.add_argument(
+        "--ep-from",
+        type=int,
+        default=0,
+        help="Start episode index (inclusive). Used for multi-process sharding.",
+    )
+    parser.add_argument(
+        "--ep-to",
+        type=int,
+        default=None,
+        help="End episode index (exclusive). Default: process to the dataset end. "
+             "Used together with --ep-from to record a sub-range per shard.",
+    )
     parser.add_argument("--fps", type=int, default=10, help="Must match the source dataset fps.")
     parser.add_argument("--dino-dtype", choices=["float32", "float16"], default="float32")
     parser.add_argument(
@@ -157,8 +170,23 @@ def main() -> None:
         episodes=src_episodes,
     )
     n_total = int(src.num_episodes)
-    n_to_record = min(args.max_episodes, n_total) if args.max_episodes else n_total
-    print(f"[record] source has {n_total} episodes; recording {n_to_record}", flush=True)
+
+    # Resolve the [ep_from, ep_to) range to actually record.
+    ep_from = max(0, int(args.ep_from))
+    ep_to = n_total if args.ep_to is None else min(int(args.ep_to), n_total)
+    if args.max_episodes is not None:
+        ep_to = min(ep_to, ep_from + args.max_episodes)
+    if ep_from >= ep_to:
+        raise SystemExit(
+            f"[record] empty range: ep_from={ep_from} ep_to={ep_to} "
+            f"(source has {n_total} episodes)"
+        )
+    episode_indices = list(range(ep_from, ep_to))
+    print(
+        f"[record] source has {n_total} episodes; recording shard "
+        f"[{ep_from}, {ep_to}) = {len(episode_indices)} episodes",
+        flush=True,
+    )
 
     print(f"[record] building HFRVLAPolicy from {args.smolvla}", flush=True)
     config = HFRVLAConfig.from_smolvla(
@@ -249,7 +277,7 @@ def main() -> None:
     )
     print(f"[record] dst created at {dst.root}", flush=True)
 
-    for ep_idx in range(n_to_record):
+    for ep_idx in episode_indices:
         ep_from, ep_to, ep_task = _episode_bounds(src, ep_idx)
 
         policy.reset()
