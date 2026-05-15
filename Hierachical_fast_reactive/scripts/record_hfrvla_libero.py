@@ -22,10 +22,13 @@ After recording, lerobot-train can consume the dataset with:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 import torch
+
+os.environ.setdefault("HF_DATASETS_CACHE", "/tmp/hfrvla_hf_datasets_cache")
 
 POLICY_SRC = Path(__file__).resolve().parents[1] / "policy" / "lerobot_policy_hfrvla" / "src"
 if POLICY_SRC.exists():
@@ -46,6 +49,12 @@ from lerobot_policy_hfrvla.processor_hfrvla import normalize_for_dinov3
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--src-repo-id", default="HuggingFaceVLA/libero")
+    parser.add_argument(
+        "--src-root",
+        type=Path,
+        default=None,
+        help="Optional local root for the source LeRobotDataset.",
+    )
     parser.add_argument(
         "--out-repo-id",
         default="HFRVLA_libero_v1",
@@ -126,7 +135,12 @@ def main() -> None:
     device = torch.device(args.device)
 
     print(f"[record] loading source dataset: {args.src_repo_id}", flush=True)
-    src = LeRobotDataset(args.src_repo_id)
+    src_episodes = list(range(args.max_episodes)) if args.max_episodes is not None else None
+    src = LeRobotDataset(
+        args.src_repo_id,
+        root=args.src_root,
+        episodes=src_episodes,
+    )
     n_total = int(src.num_episodes)
     n_to_record = min(args.max_episodes, n_total) if args.max_episodes else n_total
     print(f"[record] source has {n_total} episodes; recording {n_to_record}", flush=True)

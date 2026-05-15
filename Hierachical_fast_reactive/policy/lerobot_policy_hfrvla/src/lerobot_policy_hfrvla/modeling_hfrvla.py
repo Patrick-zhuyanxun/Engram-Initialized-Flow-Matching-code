@@ -79,6 +79,13 @@ def _apply_curriculum_stage(policy_or_stub, step: int) -> None:
     policy_or_stub._prev_stage = stage
 
 
+def _ensure_trailing_feature_dim(value: Tensor, reference: Tensor) -> Tensor:
+    """Restore singleton feature dims collapsed by LeRobot scalar features."""
+    if value.dim() == reference.dim() - 1:
+        return value.unsqueeze(-1)
+    return value
+
+
 class HFRVLAPolicy(SmolVLAPolicy):
     """Hierarchical Fast-Reactive VLA policy.
 
@@ -375,6 +382,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
         a_expert = batch["action"]
         a_base = batch["observation.extra.a_base"]
         k_idx_norm = batch["observation.extra.k_idx_norm"]
+        k_idx_norm = _ensure_trailing_feature_dim(k_idx_norm, reference=a_base)
         z_goal = batch["observation.extra.z_goal"]
         z_phase = batch["observation.extra.z_phase"]
         dino_patches = batch["observation.extra.dino_patches"]
@@ -427,6 +435,8 @@ class HFRVLAPolicy(SmolVLAPolicy):
         # L_contact — optional aux head
         if out.contact_logit is not None and contact_label is not None:
             target = contact_label.float()
+            if target.dim() == out.contact_logit.dim() + 1 and target.shape[-1] == 1:
+                target = target.squeeze(-1)
             # Broadcast if the contact head produced a sequence dim.
             if target.shape != out.contact_logit.shape:
                 target = target.expand_as(out.contact_logit)

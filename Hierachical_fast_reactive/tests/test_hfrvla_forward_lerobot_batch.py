@@ -130,3 +130,14 @@ def test_curriculum_stage2_marks_refine_lr_pending():
     # so the wrapper script knows to drop LR. (The wrapper consumes & clears
     # the flag.)
     assert pol._refine_lr_pending is True
+
+
+def test_lerobot_scalar_feature_gets_trailing_dim_for_fast_module():
+    from lerobot_policy_hfrvla.modeling_hfrvla import _ensure_trailing_feature_dim
+
+    a_base = torch.zeros(2, 8, 7)
+    k_idx_norm = torch.zeros(2, 8)
+
+    expanded = _ensure_trailing_feature_dim(k_idx_norm, reference=a_base)
+
+    assert expanded.shape == (2, 8, 1)
