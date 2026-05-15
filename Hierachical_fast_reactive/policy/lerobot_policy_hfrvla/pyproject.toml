@@ -1,0 +1,26 @@
+[project]
+name = "lerobot_policy_hfrvla"
+version = "0.1.0"
+description = "LeRobot plugin: Hierarchical Fast-Reactive VLA — wrist-camera-only confidence-gated residual on frozen SmolVLA, using DINOv3 ViT-S/16 visual backbone."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "Yan-Xun (Patrick) Chu", email = "gptyanxun@gmail.com" },
+]
+dependencies = [
+    "lerobot>=0.5.0",
+    "torch>=2.7.1",
+    "torchvision>=0.22",
+    "transformers>=4.56.0",
+    "einops>=0.8",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.entry-points."lerobot.policies"]
+hfrvla = "lerobot_policy_hfrvla:HFRVLAPolicy"
