@@ -28,7 +28,15 @@ from pathlib import Path
 
 import torch
 
-os.environ.setdefault("HF_DATASETS_CACHE", "/tmp/hfrvla_hf_datasets_cache")
+HFRVLA_CACHE_ROOT = Path(
+    os.environ.get("HFRVLA_CACHE_ROOT", Path.home() / ".cache" / "hfrvla")
+).expanduser()
+HFRVLA_HF_DATASETS_CACHE = HFRVLA_CACHE_ROOT / "hf_datasets"
+HFRVLA_TMPDIR = HFRVLA_CACHE_ROOT / "tmp"
+HFRVLA_HF_DATASETS_CACHE.mkdir(parents=True, exist_ok=True)
+HFRVLA_TMPDIR.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("HF_DATASETS_CACHE", str(HFRVLA_HF_DATASETS_CACHE))
+os.environ.setdefault("TMPDIR", str(HFRVLA_TMPDIR))
 
 POLICY_SRC = Path(__file__).resolve().parents[1] / "policy" / "lerobot_policy_hfrvla" / "src"
 if POLICY_SRC.exists():
@@ -78,6 +86,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-episodes", type=int, default=None)
     parser.add_argument("--fps", type=int, default=10, help="Must match the source dataset fps.")
     parser.add_argument("--dino-dtype", choices=["float32", "float16"], default="float32")
+    parser.add_argument(
+        "--dino-batch-size",
+        type=int,
+        default=64,
+        help="Number of wrist frames to forward through DINOv3 per call. "
+             "Larger = better GPU utilization, more VRAM. 64 fits comfortably on a 24 GB GPU at 224x224.",
+    )
     parser.add_argument("--device", default="cuda")
     return parser.parse_args()
 
@@ -242,6 +257,13 @@ def main() -> None:
         cached_zphase: torch.Tensor | None = None
         chunk_consumed = 0
 
+        # ── Pass 1: SmolVLA chunk loop + collect everything except dino_patches.
+        # Per-frame records hold ALL per-row tensors that go to disk EXCEPT
+        # dino_patches (computed in Pass 2). Wrist tensors for DINO live in
+        # wrist_for_dino_buf as already-normalized (1,3,H,W) tensors on CPU.
+        frame_records: list[dict] = []
+        wrist_for_dino_buf: list[torch.Tensor] = []
+
         for t in range(ep_from, ep_to):
             sample = src[t]
             sample_with_task = dict(sample)
@@ -273,30 +295,61 @@ def main() -> None:
             k_idx = chunk_consumed - 1
             k_norm = k_idx / max(1, n_action_steps - 1)
 
-            wrist_for_dino = _wrist_for_dino(sample[args.wrist_key]).to(device)
-            with torch.no_grad():
-                dino_patches = dino(wrist_for_dino).squeeze(0).cpu()
-            if dino_dtype == "float16":
-                dino_patches = dino_patches.half()
+            # Stash normalized wrist for batched DINO pass below.
+            # _wrist_for_dino returns (1,3,H,W); strip the batch dim for stacking.
+            wrist_for_dino_buf.append(_wrist_for_dino(sample[args.wrist_key]).squeeze(0).cpu())
 
-            frame = {
-                "observation.images.image": _img_for_write(sample["observation.images.image"]),
-                "observation.images.image2": _img_for_write(sample[args.wrist_key]),
-                "observation.state": sample[args.state_key].cpu().float(),
+            frame_records.append({
+                "image_uint8":  _img_for_write(sample["observation.images.image"]),
+                "image2_uint8": _img_for_write(sample[args.wrist_key]),
+                "state":  sample[args.state_key].cpu().float(),
                 "action": sample[args.action_key].cpu().float(),
-                "observation.extra.z_goal": (
+                "z_goal": (
                     cached_zgoal.squeeze(0).cpu().float()
                     if cached_zgoal is not None
                     else torch.zeros(text_hidden, dtype=torch.float32)
                 ),
-                "observation.extra.z_phase": (
+                "z_phase": (
                     cached_zphase.squeeze(0).cpu().float()
                     if cached_zphase is not None
                     else torch.zeros(expert_hidden, dtype=torch.float32)
                 ),
-                "observation.extra.a_base": a_base.squeeze(0).cpu().float(),
-                "observation.extra.k_idx_norm": torch.tensor([k_norm], dtype=torch.float32),
-                "observation.extra.dino_patches": dino_patches,
+                "a_base": a_base.squeeze(0).cpu().float(),
+                "k_norm": float(k_norm),
+            })
+
+        # ── Pass 2: batched DINOv3 over the whole episode.
+        # Stacks all wrist frames once, then forwards in --dino-batch-size chunks.
+        # Replaces N single-image DINO calls with ceil(N / batch_size) — typically
+        # ~50x fewer kernel launches per episode for batch_size=64 on a 200-frame
+        # episode, with proportionally higher GPU utilization.
+        T = len(wrist_for_dino_buf)
+        all_dino_patches_chunks: list[torch.Tensor] = []
+        with torch.no_grad():
+            wrist_stack = torch.stack(wrist_for_dino_buf, dim=0)   # (T, 3, H, W) CPU
+            for i in range(0, T, args.dino_batch_size):
+                chunk = wrist_stack[i : i + args.dino_batch_size].to(device, non_blocking=True)
+                patches = dino(chunk).cpu()                        # (b, n_patches, dim)
+                all_dino_patches_chunks.append(patches)
+        all_dino_patches = torch.cat(all_dino_patches_chunks, dim=0)  # (T, n_patches, dim)
+        if dino_dtype == "float16":
+            all_dino_patches = all_dino_patches.half()
+
+        # Free the stacked wrist buffer ASAP — it's the largest transient.
+        del wrist_stack, wrist_for_dino_buf, all_dino_patches_chunks
+
+        # ── Pass 3: write rows.
+        for local_t, rec in enumerate(frame_records):
+            frame = {
+                "observation.images.image":  rec["image_uint8"],
+                "observation.images.image2": rec["image2_uint8"],
+                "observation.state":         rec["state"],
+                "action":                    rec["action"],
+                "observation.extra.z_goal":     rec["z_goal"],
+                "observation.extra.z_phase":    rec["z_phase"],
+                "observation.extra.a_base":     rec["a_base"],
+                "observation.extra.k_idx_norm": torch.tensor([rec["k_norm"]], dtype=torch.float32),
+                "observation.extra.dino_patches":  all_dino_patches[local_t],
                 "observation.extra.contact_label": torch.tensor([0.0], dtype=torch.float32),
                 "task": ep_task,
             }
