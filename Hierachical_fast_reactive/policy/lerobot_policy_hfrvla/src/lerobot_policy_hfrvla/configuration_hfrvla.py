@@ -9,11 +9,14 @@ from dataclasses import dataclass, field, fields
 
 from lerobot.configs.policies import PreTrainedConfig
 from lerobot.policies.smolvla.configuration_smolvla import SmolVLAConfig
+from lerobot.utils.constants import OBS_IMAGES, OBS_STATE
 
 
 @PreTrainedConfig.register_subclass("hfrvla")
 @dataclass
 class HFRVLAConfig(SmolVLAConfig):
+    push_to_hub: bool = False
+
     # ── Slow VLA control ──
     freeze_smolvla: bool = True
 
@@ -25,8 +28,10 @@ class HFRVLAConfig(SmolVLAConfig):
     #      AND `dinov3_local_weights`.
     # If `dinov3_local_repo` is set, it takes precedence over `dinov3_model_id`.
     dinov3_model_id: str = "facebook/dinov3-vits16-pretrain-lvd1689m"
-    dinov3_local_repo: str | None = None
-    dinov3_local_weights: str | None = None
+    dinov3_local_repo: str | None = "checkpoints/dinov3_src"
+    dinov3_local_weights: str | None = (
+        "checkpoints/Dino_weight/dinov3_vits16_pretrain_lvd1689m-08c60483.pth"
+    )
     dinov3_arch: str = "dinov3_vits16"      # torch.hub entry-point name
     dinov3_image_size: int = 224            # → 14×14 = 196 patches at patch=16
     dinov3_feature_dim: int = 384            # ViT-S/16 hidden
@@ -81,6 +86,16 @@ class HFRVLAConfig(SmolVLAConfig):
 
     # ── Misc ──
     name: str = "hfrvla"
+
+    # ────────────────────────────────────────────────────────────────────
+    def validate_features(self) -> None:
+        super().validate_features()
+        if self.input_features:
+            self.input_features = {
+                key: feature
+                for key, feature in self.input_features.items()
+                if key == OBS_STATE or key.startswith(f"{OBS_IMAGES}.")
+            }
 
     # ────────────────────────────────────────────────────────────────────
     @classmethod
@@ -149,3 +164,8 @@ class HFRVLAConfig(SmolVLAConfig):
         windowed to ``seq_len`` consecutive steps ending at the current frame.
         """
         return list(range(-(self.seq_len - 1), 1))
+
+    @property
+    def action_delta_indices(self) -> list[int]:
+        """Window expert actions to the same temporal context as HFRVLA extras."""
+        return self.observation_delta_indices
