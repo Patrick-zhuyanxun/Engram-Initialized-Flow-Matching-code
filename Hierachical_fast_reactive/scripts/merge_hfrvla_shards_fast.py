@@ -207,6 +207,46 @@ def _write_info_json(template_info, total_eps, total_frames, total_tasks,
           flush=True)
 
 
+def _coerce_stat(value, target_shape):
+    """Flatten parquet-stored stat arrays into clean float arrays.
+
+    Image stats are stored as deeply nested object arrays
+    (e.g., array of array of array of scalar for shape (3,1,1)) because
+    pyarrow's list-of-list encoding doesn't auto-flatten back to ndarray.
+    Walk the structure, collect float leaves, reshape to target.
+    """
+    arr = np.asarray(value)
+    if arr.dtype != np.object_:
+        # already a clean numeric array — ensure shape
+        if arr.shape != target_shape and arr.size == int(np.prod(target_shape)):
+            arr = arr.reshape(target_shape)
+        return arr.astype(np.float64, copy=False)
+    flat: list[float] = []
+
+    def walk(v):
+        if isinstance(v, np.ndarray):
+            if v.dtype == np.object_:
+                for elem in v.flat:
+                    walk(elem)
+            else:
+                flat.extend(v.flatten().tolist())
+        elif isinstance(v, (list, tuple)):
+            for elem in v:
+                walk(elem)
+        else:
+            flat.append(float(v))
+
+    walk(value)
+    out = np.array(flat, dtype=np.float64)
+    expected = int(np.prod(target_shape))
+    if out.size != expected:
+        raise ValueError(
+            f"flattened stat has {out.size} elements but target_shape "
+            f"{target_shape} expects {expected}"
+        )
+    return out.reshape(target_shape)
+
+
 def _aggregate_stats_json(merged_eps_df, template_stats, out_path):
     """Aggregate per-episode stats from the merged episodes parquet."""
     from lerobot.datasets.compute_stats import aggregate_feature_stats
@@ -218,19 +258,26 @@ def _aggregate_stats_json(merged_eps_df, template_stats, out_path):
             print(f"    SKIP feature {feat} (missing required stats columns)",
                   flush=True)
             continue
+        # Target shapes inferred from the template (per-shard) stats.json.
+        target_shapes = {
+            k: np.asarray(template_stats[feat][k]).shape
+            for k in needed if k in template_stats[feat]
+        }
         q_keys = [k for k in ("q01", "q10", "q50", "q90", "q99")
-                  if f"stats/{feat}/{k}" in merged_eps_df.columns]
+                  if f"stats/{feat}/{k}" in merged_eps_df.columns
+                  and k in template_stats[feat]]
+        for q in q_keys:
+            target_shapes[q] = np.asarray(template_stats[feat][q]).shape
+
         per_ep = []
         for _, row in merged_eps_df.iterrows():
-            s = {
-                "count": np.asarray(row[f"stats/{feat}/count"]),
-                "mean":  np.asarray(row[f"stats/{feat}/mean"]),
-                "std":   np.asarray(row[f"stats/{feat}/std"]),
-                "min":   np.asarray(row[f"stats/{feat}/min"]),
-                "max":   np.asarray(row[f"stats/{feat}/max"]),
-            }
+            s = {}
+            # count is always a clean int array of shape (1,); keep it int.
+            s["count"] = np.asarray(row[f"stats/{feat}/count"])
+            for k in ("mean", "std", "min", "max"):
+                s[k] = _coerce_stat(row[f"stats/{feat}/{k}"], target_shapes[k])
             for q in q_keys:
-                s[q] = np.asarray(row[f"stats/{feat}/{q}"])
+                s[q] = _coerce_stat(row[f"stats/{feat}/{q}"], target_shapes[q])
             per_ep.append(s)
         agg = aggregate_feature_stats(per_ep)
         out[feat] = {k: np.asarray(v).tolist() for k, v in agg.items()}
