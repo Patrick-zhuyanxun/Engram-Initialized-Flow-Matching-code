@@ -84,6 +84,12 @@ class HFRVLAConfig(SmolVLAConfig):
     safety_joint_velocity_limit: float = 2.0   # rad/s, applied per-DoF
     control_dt: float = 0.1                     # 10 Hz (LIBERO HuggingFaceVLA fps)
 
+    # ── Inference debug switches ──
+    # When True, select_action short-circuits to ``a_base`` (the popped SmolVLA
+    # action) and skips the fast module entirely. Use for I/O alignment tests
+    # against the SmolVLA baseline before training the fast module.
+    inference_disable_fast: bool = False
+
     # ── Misc ──
     name: str = "hfrvla"
 

@@ -279,6 +279,13 @@ class HFRVLAPolicy(SmolVLAPolicy):
 
         a_base = self._queues[ACTION].popleft()
         self._chunk_consumed += 1
+
+        # Alignment-test short-circuit: behave exactly like SmolVLA base.
+        # Verifies that the HFRVLA wrapper + dataset feature config + action
+        # post-processing produce outputs LIBERO env accepts.
+        if getattr(self.config, "inference_disable_fast", False):
+            return a_base
+
         k = self._chunk_consumed - 1
         k_norm = torch.full(
             (a_base.shape[0], 1),

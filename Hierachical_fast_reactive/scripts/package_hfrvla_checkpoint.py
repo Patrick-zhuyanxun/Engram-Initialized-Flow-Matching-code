@@ -36,8 +36,16 @@ from lerobot_policy_hfrvla.modeling_hfrvla import HFRVLAPolicy
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
-    p.add_argument("--fast-ckpt", type=Path, required=True,
-                   help="Path to fast_final.pt or any legacy step_*.pt checkpoint.")
+    p.add_argument("--fast-ckpt", type=Path, default=None,
+                   help="Path to fast_final.pt or any legacy step_*.pt checkpoint. "
+                        "Required unless --disable-fast is set.")
+    p.add_argument("--disable-fast", action="store_true",
+                   help="Package an alignment-test checkpoint that short-circuits "
+                        "select_action() to return SmolVLA's a_base directly "
+                        "(no fast residual). Fast module weights stay randomly "
+                        "initialized but are never invoked at inference. Use "
+                        "this to confirm I/O compatibility against the SmolVLA "
+                        "baseline before training the fast module.")
     p.add_argument("--smolvla-pretrained", type=str, default="lerobot/smolvla_base")
     p.add_argument("--out-dir", type=Path, required=True,
                    help="Destination directory; will contain config.json + model.safetensors.")
@@ -49,9 +57,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dataset-repo-id", type=str, default="HuggingFaceVLA/libero",
                    help="LeRobot dataset to source normalization stats from. "
                         "Should match what precompute used.")
+    p.add_argument("--dataset-root", type=str, default=None,
+                   help="Local dataset root for stats loading (avoids HF Hub).")
     p.add_argument("--no-stats", action="store_true",
                    help="Skip loading dataset stats (faster; but eval will use raw input).")
-    return p.parse_args()
+    args = p.parse_args()
+    if not args.disable_fast and args.fast_ckpt is None:
+        p.error("--fast-ckpt is required unless --disable-fast is set")
+    return args
 
 
 def _libero_feature_overrides(config: HFRVLAConfig) -> None:
@@ -79,21 +92,28 @@ def main() -> None:
         dinov3_arch=args.dinov3_arch,
     )
     _libero_feature_overrides(config)
+    if args.disable_fast:
+        config.inference_disable_fast = True
+        print(f"[package] --disable-fast set: select_action will short-circuit "
+              f"to SmolVLA's a_base (fast module weights are unused).")
 
     print(f"[package] loading SmolVLA weights into HFRVLAPolicy ...")
     policy = HFRVLAPolicy.from_pretrained(args.smolvla_pretrained, config=config)
     policy = policy.to(device).eval()
 
-    print(f"[package] loading fast checkpoint: {args.fast_ckpt}")
-    ckpt = torch.load(args.fast_ckpt, map_location=device, weights_only=True)
-    fast_state = ckpt.get("fast_state_dict", ckpt)
-    missing, unexpected = policy.fast.load_state_dict(fast_state, strict=False)
-    if missing:
-        print(f"[package]   WARNING missing fast keys: {sorted(missing)[:8]}"
-              f"{' ...' if len(missing) > 8 else ''}")
-    if unexpected:
-        print(f"[package]   WARNING unexpected fast keys: {sorted(unexpected)[:8]}"
-              f"{' ...' if len(unexpected) > 8 else ''}")
+    if args.fast_ckpt is not None:
+        print(f"[package] loading fast checkpoint: {args.fast_ckpt}")
+        ckpt = torch.load(args.fast_ckpt, map_location=device, weights_only=True)
+        fast_state = ckpt.get("fast_state_dict", ckpt)
+        missing, unexpected = policy.fast.load_state_dict(fast_state, strict=False)
+        if missing:
+            print(f"[package]   WARNING missing fast keys: {sorted(missing)[:8]}"
+                  f"{' ...' if len(missing) > 8 else ''}")
+        if unexpected:
+            print(f"[package]   WARNING unexpected fast keys: {sorted(unexpected)[:8]}"
+                  f"{' ...' if len(unexpected) > 8 else ''}")
+    else:
+        print(f"[package] skipping fast checkpoint load (--disable-fast set)")
 
     print(f"[package] writing checkpoint dir -> {args.out_dir}")
     policy.save_pretrained(args.out_dir)
@@ -103,7 +123,10 @@ def main() -> None:
     if not args.no_stats:
         from lerobot.datasets.lerobot_dataset import LeRobotDataset
         print(f"[package] loading dataset stats from {args.dataset_repo_id} ...")
-        ds = LeRobotDataset(args.dataset_repo_id)
+        ds_kwargs = {"repo_id": args.dataset_repo_id}
+        if args.dataset_root:
+            ds_kwargs["root"] = args.dataset_root
+        ds = LeRobotDataset(**ds_kwargs)
         dataset_stats = getattr(ds.meta, "stats", None)
     preprocessor, postprocessor = make_pre_post_processors(
         policy_cfg=config,
