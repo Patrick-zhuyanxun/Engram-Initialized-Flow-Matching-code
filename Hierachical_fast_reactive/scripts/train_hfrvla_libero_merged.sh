@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Train HFRVLA fast-reactive module on the merged LIBERO shared dataset.
+#
+# This script intentionally pins the SmolVLA architecture knobs used by
+# HuggingFaceVLA/smolvla_libero. The recorded HFRVLA dataset stores
+# z_goal=(960,) and z_phase=(480,), so training with the raw smolvla_base
+# defaults would create a z_phase=(720,) fast module and fail.
+# Training runs in HFRVLA offline mode: the dataset already contains SmolVLA
+# and DINOv3 cached features, so the train process does not construct the
+# frozen slow planner or DINO backbone.
+#
+# Smoke:
+#   STEPS=100 BATCH_SIZE=4 NUM_WORKERS=0 WARMUP_STEPS=10 JOINT_STEPS=80 \
+#   REFINE_STEPS=10 OUT_DIR=outputs/train_hfrvla_smoke \
+#     scripts/train_hfrvla_libero_merged.sh
+#
+# Full:
+#   OUT_DIR=checkpoints/hfrvla_run01 scripts/train_hfrvla_libero_merged.sh
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PY="${PY:-$HOME/Robotic_infra/lerobot/.venv/bin/python}"
+
+DATASET_REPO_ID="${DATASET_REPO_ID:-HFRVLA_libero_v1}"
+DATASET_ROOT="${DATASET_ROOT:-$PROJECT_ROOT/checkpoints/HFRVLA_libero_v1_merged_reindexed}"
+OUT_DIR="${OUT_DIR:-$PROJECT_ROOT/checkpoints/hfrvla_run01}"
+JOB_NAME="${JOB_NAME:-hfrvla_libero_run01}"
+
+DEVICE="${DEVICE:-cuda}"
+STEPS="${STEPS:-60000}"
+BATCH_SIZE="${BATCH_SIZE:-128}"
+NUM_WORKERS="${NUM_WORKERS:-8}"
+SAVE_FREQ="${SAVE_FREQ:-5000}"
+LOG_FREQ="${LOG_FREQ:-50}"
+
+LR="${LR:-3e-4}"
+WEIGHT_DECAY="${WEIGHT_DECAY:-1e-4}"
+GRAD_CLIP_NORM="${GRAD_CLIP_NORM:-1.0}"
+SCHEDULER_DECAY_STEPS="${SCHEDULER_DECAY_STEPS:-$STEPS}"
+SCHEDULER_DECAY_LR="${SCHEDULER_DECAY_LR:-$LR}"
+
+SEQ_LEN="${SEQ_LEN:-8}"
+HFRVLA_DATASET_BACKEND="${HFRVLA_DATASET_BACKEND:-lerobot}"
+HFRVLA_FASTCACHE_ROOT="${HFRVLA_FASTCACHE_ROOT:-$PROJECT_ROOT/checkpoints/HFRVLA_libero_v1_fastcache_seq${SEQ_LEN}}"
+case "${HFRVLA_DATASET_BACKEND,,}" in
+  lerobot|fastcache)
+    HFRVLA_DATASET_BACKEND="${HFRVLA_DATASET_BACKEND,,}"
+    ;;
+  *)
+    echo "[hfrvla-train] HFRVLA_DATASET_BACKEND must be 'lerobot' or 'fastcache': $HFRVLA_DATASET_BACKEND" >&2
+    exit 1
+    ;;
+esac
+export HFRVLA_DATASET_BACKEND
+export HFRVLA_FASTCACHE_ROOT
+
+OFFLINE_ZGOAL_DIM="${OFFLINE_ZGOAL_DIM:-960}"
+OFFLINE_ZPHASE_DIM="${OFFLINE_ZPHASE_DIM:-480}"
+WARMUP_STEPS="${WARMUP_STEPS:-1000}"
+JOINT_STEPS="${JOINT_STEPS:-49000}"
+REFINE_STEPS="${REFINE_STEPS:-10000}"
+
+WANDB_ENABLE="${WANDB_ENABLE:-false}"
+case "${WANDB_ENABLE,,}" in
+  1|true|yes|on)
+    WANDB_ENABLE="true"
+    ;;
+  *)
+    WANDB_ENABLE="false"
+    export WANDB_MODE="${WANDB_MODE:-disabled}"
+    export WANDB_DISABLED="${WANDB_DISABLED:-true}"
+    ;;
+esac
+WANDB_PROJECT="${WANDB_PROJECT:-hfrvla}"
+
+DINO_REPO="${DINO_REPO:-$PROJECT_ROOT/checkpoints/dinov3_src}"
+DINO_WEIGHTS="${DINO_WEIGHTS:-$PROJECT_ROOT/checkpoints/Dino_weight/dinov3_vits16_pretrain_lvd1689m-08c60483.pth}"
+DINO_ARCH="${DINO_ARCH:-dinov3_vits16}"
+
+HFRVLA_TMP_ROOT="${HFRVLA_TMP_ROOT:-$HOME/tmp/hfrvla}"
+export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-$HFRVLA_TMP_ROOT/hf_datasets}"
+export TMPDIR="${TMPDIR:-$HFRVLA_TMP_ROOT/tmp}"
+export TMP="${TMP:-$TMPDIR}"
+export TEMP="${TEMP:-$TMPDIR}"
+export NUMBA_CACHE_DIR="${NUMBA_CACHE_DIR:-$HFRVLA_TMP_ROOT/numba}"
+export MPLCONFIGDIR="${MPLCONFIGDIR:-$HFRVLA_TMP_ROOT/matplotlib}"
+export TORCH_HOME="${TORCH_HOME:-$HFRVLA_TMP_ROOT/torch}"
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-$HFRVLA_TMP_ROOT/triton}"
+export WANDB_DIR="${WANDB_DIR:-$HFRVLA_TMP_ROOT/wandb}"
+
+mkdir -p \
+  "$HF_DATASETS_CACHE" \
+  "$TMPDIR" \
+  "$NUMBA_CACHE_DIR" \
+  "$MPLCONFIGDIR" \
+  "$TORCH_HOME" \
+  "$TRITON_CACHE_DIR" \
+  "$WANDB_DIR"
+
+if [[ ! -d "$DATASET_ROOT" ]]; then
+  echo "[hfrvla-train] dataset root does not exist: $DATASET_ROOT" >&2
+  exit 1
+fi
+
+if [[ "$HFRVLA_DATASET_BACKEND" == "fastcache" && ! -f "$HFRVLA_FASTCACHE_ROOT/meta.json" ]]; then
+  cat >&2 <<EOF
+[hfrvla-train] fast-cache meta.json does not exist:
+  $HFRVLA_FASTCACHE_ROOT/meta.json
+
+Build it first:
+  $PY $PROJECT_ROOT/scripts/build_hfrvla_fastcache.py \\
+      --source-root "$DATASET_ROOT" \\
+      --cache-root "$HFRVLA_FASTCACHE_ROOT" \\
+      --seq-len "$SEQ_LEN"
+EOF
+  exit 1
+fi
+
+if [[ ! -d "$DINO_REPO" ]]; then
+  echo "[hfrvla-train] DINOv3 repo does not exist: $DINO_REPO" >&2
+  exit 1
+fi
+
+if [[ ! -f "$DINO_WEIGHTS" ]]; then
+  echo "[hfrvla-train] DINOv3 weights do not exist: $DINO_WEIGHTS" >&2
+  exit 1
+fi
+
+if [[ -e "$OUT_DIR" && "${RESUME:-false}" != "true" ]]; then
+  cat >&2 <<EOF
+[hfrvla-train] output directory already exists:
+  $OUT_DIR
+
+LeRobot refuses to overwrite an existing --output_dir when resume is false.
+Choose a fresh directory, for example:
+  OUT_DIR=${OUT_DIR}_run2 scripts/train_hfrvla_libero_merged.sh
+
+Or resume by passing the proper LeRobot resume flag and setting RESUME=true.
+EOF
+  exit 1
+fi
+
+echo "[hfrvla-train] dataset=$DATASET_REPO_ID root=$DATASET_ROOT"
+echo "[hfrvla-train] dataset_backend=$HFRVLA_DATASET_BACKEND fastcache_root=$HFRVLA_FASTCACHE_ROOT"
+echo "[hfrvla-train] output=$OUT_DIR"
+echo "[hfrvla-train] steps=$STEPS batch_size=$BATCH_SIZE num_workers=$NUM_WORKERS seq_len=$SEQ_LEN device=$DEVICE"
+echo "[hfrvla-train] curriculum warmup=$WARMUP_STEPS joint=$JOINT_STEPS refine=$REFINE_STEPS"
+echo "[hfrvla-train] offline_training_mode=true z_goal=$OFFLINE_ZGOAL_DIM z_phase=$OFFLINE_ZPHASE_DIM"
+echo "[hfrvla-train] wandb_enable=$WANDB_ENABLE"
+echo "[hfrvla-train] tmp_root=$HFRVLA_TMP_ROOT"
+echo "[hfrvla-train] hf_datasets_cache=$HF_DATASETS_CACHE"
+echo "[hfrvla-train] tmpdir=$TMPDIR"
+
+"$PY" "$PROJECT_ROOT/scripts/train_via_lerobot.py" \
+  --dataset.repo_id="$DATASET_REPO_ID" \
+  --dataset.root="$DATASET_ROOT" \
+  --policy.type=hfrvla \
+  --policy.device="$DEVICE" \
+  --policy.seq_len="$SEQ_LEN" \
+  --policy.offline_training_mode=true \
+  --policy.offline_zgoal_dim="$OFFLINE_ZGOAL_DIM" \
+  --policy.offline_zphase_dim="$OFFLINE_ZPHASE_DIM" \
+  --policy.vlm_model_name=HuggingFaceTB/SmolVLM2-500M-Instruct \
+  --policy.expert_width_multiplier=0.5 \
+  --policy.num_vlm_layers=0 \
+  --policy.load_vlm_weights=false \
+  --policy.dinov3_local_repo="$DINO_REPO" \
+  --policy.dinov3_local_weights="$DINO_WEIGHTS" \
+  --policy.dinov3_arch="$DINO_ARCH" \
+  --policy.curriculum_warmup_steps="$WARMUP_STEPS" \
+  --policy.curriculum_joint_steps="$JOINT_STEPS" \
+  --policy.curriculum_refine_steps="$REFINE_STEPS" \
+  --policy.optimizer_lr="$LR" \
+  --policy.optimizer_weight_decay="$WEIGHT_DECAY" \
+  --policy.optimizer_grad_clip_norm="$GRAD_CLIP_NORM" \
+  --policy.scheduler_warmup_steps="$WARMUP_STEPS" \
+  --policy.scheduler_decay_steps="$SCHEDULER_DECAY_STEPS" \
+  --policy.scheduler_decay_lr="$SCHEDULER_DECAY_LR" \
+  --batch_size="$BATCH_SIZE" \
+  --num_workers="$NUM_WORKERS" \
+  --steps="$STEPS" \
+  --save_freq="$SAVE_FREQ" \
+  --log_freq="$LOG_FREQ" \
+  --output_dir="$OUT_DIR" \
+  --wandb.enable="$WANDB_ENABLE" \
+  --wandb.project="$WANDB_PROJECT" \
+  --job_name="$JOB_NAME" \
+  "$@"

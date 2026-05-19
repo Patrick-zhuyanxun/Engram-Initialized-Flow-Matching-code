@@ -20,6 +20,12 @@ Default model: `facebook/dinov3-vits16-pretrain-lvd1689m` (ViT-S/16, ~21 M param
 
 ## Train and eval
 
+Use a SmolVLA slow planner that is already adapted to LIBERO's
+`image`/`image2`/8D-state/7D-action contract. Raw `lerobot/smolvla_base` is
+only a warm start for fine-tuning and is rejected by the recording/alignment
+scripts by default. The canonical published checkpoint is
+`HuggingFaceVLA/smolvla_libero`.
+
 ```bash
 cd ~/Patrick/VLA_research/Hierachical_fast_reactive
 
@@ -27,13 +33,20 @@ cd ~/Patrick/VLA_research/Hierachical_fast_reactive
     --src-repo-id HuggingFaceVLA/libero \
     --out-repo-id HFRVLA_libero_v1 \
     --out-root checkpoints/HFRVLA_libero_v1 \
-    --smolvla lerobot/smolvla_base \
     --dinov3-repo checkpoints/dinov3_src \
     --dinov3-weights checkpoints/Dino_weight/dinov3_vits16_pretrain_lvd1689m-08c60483.pth
 
+~/Robotic_infra/lerobot/.venv/bin/python scripts/build_hfrvla_fastcache.py \
+    --source-root checkpoints/HFRVLA_libero_v1_merged_reindexed \
+    --cache-root checkpoints/HFRVLA_libero_v1_fastcache_seq4 \
+    --seq-len 4
+
+HFRVLA_DATASET_BACKEND=fastcache \
+HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4 \
+SEQ_LEN=4 \
 ~/Robotic_infra/lerobot/.venv/bin/python scripts/train_via_lerobot.py \
     --dataset.repo_id=HFRVLA_libero_v1 \
-    --dataset.root=checkpoints/HFRVLA_libero_v1 \
+    --dataset.root=checkpoints/HFRVLA_libero_v1_merged_reindexed \
     --policy.type=hfrvla
 ```
 
