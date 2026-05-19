@@ -60,6 +60,10 @@ def _write_source(root: Path) -> None:
         )
     )
     pd.DataFrame(
+        {"task_index": [0, 1]},
+        index=pd.Index(["pick up the block", "open the drawer"], name="task"),
+    ).to_parquet(root / "meta/tasks.parquet")
+    pd.DataFrame(
         {
             "episode_index": [0, 1],
             "dataset_from_index": [0, 2],
@@ -81,6 +85,7 @@ def _write_source(root: Path) -> None:
                 ).tolist(),
                 "observation.extra.contact_label": np.array([0], dtype=np.float32).tolist(),
                 "episode_index": 0 if i < 2 else 1,
+                "task_index": 0 if i < 2 else 1,
                 "index": i,
             }
         )
@@ -98,5 +103,7 @@ def test_build_fast_cache_writes_float16_large_arrays(tmp_path):
     assert meta["total_frames"] == 4
     assert np.load(cache / "episode_starts.npy").tolist() == [0, 2]
     assert np.load(cache / "episode_ends.npy").tolist() == [2, 4]
+    assert np.load(cache / "task_index.npy").tolist() == [0, 0, 1, 1]
+    assert meta["index_arrays"]["task_index"]["array"] == "task_index.npy"
     assert np.load(cache / "z_goal.npy", mmap_mode="r").dtype == np.float16
     assert np.load(cache / "dino_patches.npy", mmap_mode="r").shape == (4, 196, 384)

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
@@ -16,6 +17,7 @@ def _write_cache(root: Path) -> None:
     source_root = root / "source"
     source_root.mkdir()
     (source_root / "meta").mkdir()
+    (source_root / "data/chunk-000").mkdir(parents=True)
     (source_root / "meta" / "stats.json").write_text(
         json.dumps(
             {
@@ -24,6 +26,16 @@ def _write_cache(root: Path) -> None:
             }
         )
     )
+    pd.DataFrame(
+        {"task_index": [0, 1]},
+        index=pd.Index(["pick up the block", "open the drawer"], name="task"),
+    ).to_parquet(source_root / "meta" / "tasks.parquet")
+    pd.DataFrame(
+        {
+            "index": list(range(6)),
+            "task_index": [0, 0, 0, 1, 1, 1],
+        }
+    ).to_parquet(source_root / "data/chunk-000/file-000.parquet", index=False)
     meta = {
         "schema_version": 1,
         "source_dataset_root": str(source_root),
@@ -121,3 +133,18 @@ def test_fast_cache_dataset_collates_policy_keys(tmp_path):
     assert batch["observation.extra.contact_label"].shape == (2, 3, 1)
     assert dataset.meta.camera_keys == []
     assert dataset.meta.stats["action"]["mean"].shape == (7,)
+
+
+def test_fast_cache_dataset_returns_task_complementary_data(tmp_path):
+    cache_root = tmp_path / "cache"
+    _write_cache(cache_root)
+    dataset = HFRVLAFastCacheDataset(cache_root, seq_len=3)
+
+    sample = dataset[3]
+    batch = next(iter(DataLoader(dataset, batch_size=2)))
+
+    assert sample["task"] == "open the drawer"
+    assert sample["index"].item() == 3
+    assert sample["episode_index"].item() == 1
+    assert sample["task_index"].item() == 1
+    assert batch["task"] == ["pick up the block", "pick up the block"]

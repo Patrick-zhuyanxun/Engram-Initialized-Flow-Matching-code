@@ -25,6 +25,11 @@ POLICY_TO_ARRAY = {
     "observation.extra.dino_patches": ("dino_patches.npy", np.float16),
     "observation.extra.contact_label": ("contact_label.npy", np.float32),
 }
+INDEX_TO_ARRAY = {
+    "index": ("index.npy", np.int64),
+    "episode_index": ("episode_index.npy", np.int64),
+    "task_index": ("task_index.npy", np.int64),
+}
 
 
 def _sha256(path: Path) -> str:
@@ -74,6 +79,18 @@ def _empty_arrays(cache_root: Path, info: dict) -> dict[str, np.memmap]:
     return arrays
 
 
+def _empty_index_arrays(cache_root: Path, total_frames: int) -> dict[str, np.memmap]:
+    arrays = {}
+    for key, (filename, dtype) in INDEX_TO_ARRAY.items():
+        arrays[key] = np.lib.format.open_memmap(
+            cache_root / filename,
+            mode="w+",
+            dtype=dtype,
+            shape=(total_frames,),
+        )
+    return arrays
+
+
 def _stack_column(values: pd.Series, feature_shape: tuple[int, ...], dtype) -> np.ndarray:
     arrays = []
     for value in values.to_numpy():
@@ -102,19 +119,25 @@ def build_fast_cache(source_root: str | Path, cache_root: str | Path, *, seq_len
     np.save(cache_root / "episode_ends.npy", ends)
 
     arrays = _empty_arrays(cache_root, info)
+    index_arrays = _empty_index_arrays(cache_root, int(info["total_frames"]))
     data_files = sorted((source_root / "data").glob("*/*.parquet"), key=_numeric_file_index)
     if not data_files:
         raise FileNotFoundError(f"No data parquet files under {source_root / 'data'}")
 
     offset = 0
     columns = list(POLICY_TO_ARRAY)
+    index_columns = list(INDEX_TO_ARRAY)
     for path in data_files:
-        df = pd.read_parquet(path, columns=columns)
+        df = pd.read_parquet(path, columns=[*columns, *index_columns])
         count = len(df)
         for key in columns:
             feature_shape = tuple(info["features"][key]["shape"])
             values = _stack_column(df[key], feature_shape, arrays[key].dtype)
             arrays[key][offset : offset + count] = values
+        for key in index_columns:
+            index_arrays[key][offset : offset + count] = df[key].to_numpy(
+                dtype=index_arrays[key].dtype,
+            )
         offset += count
 
     expected = int(info["total_frames"])
@@ -123,6 +146,8 @@ def build_fast_cache(source_root: str | Path, cache_root: str | Path, *, seq_len
 
     for arr in arrays.values():
         arr.flush()
+    for arr in index_arrays.values():
+        arr.flush()
 
     features = {}
     for key, (filename, dtype) in POLICY_TO_ARRAY.items():
@@ -130,6 +155,13 @@ def build_fast_cache(source_root: str | Path, cache_root: str | Path, *, seq_len
             "array": filename,
             "dtype": np.dtype(dtype).name,
             "shape": [expected, *list(info["features"][key]["shape"])],
+        }
+    index_features = {}
+    for key, (filename, dtype) in INDEX_TO_ARRAY.items():
+        index_features[key] = {
+            "array": filename,
+            "dtype": np.dtype(dtype).name,
+            "shape": [expected],
         }
     meta = {
         "schema_version": CACHE_SCHEMA_VERSION,
@@ -140,6 +172,7 @@ def build_fast_cache(source_root: str | Path, cache_root: str | Path, *, seq_len
         "fps": int(info["fps"]),
         "seq_len": int(seq_len),
         "features": features,
+        "index_arrays": index_features,
         "built_at": datetime.now(timezone.utc).isoformat(),
     }
     (cache_root / "meta.json").write_text(json.dumps(meta, indent=2))

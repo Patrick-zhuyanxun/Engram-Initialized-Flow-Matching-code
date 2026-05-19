@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import torch
 from lerobot.datasets.io_utils import load_stats
 from torch.utils.data import Dataset
@@ -30,6 +31,11 @@ POLICY_KEY_TO_ARRAY = {
     "observation.extra.z_phase": "z_phase",
     "observation.extra.dino_patches": "dino_patches",
     "observation.extra.contact_label": "contact_label",
+}
+INDEX_ARRAY_FILES = {
+    "index": "index.npy",
+    "episode_index": "episode_index.npy",
+    "task_index": "task_index.npy",
 }
 
 
@@ -72,6 +78,11 @@ def load_fast_cache_metadata(cache_root: str | Path) -> dict[str, Any]:
         for spec in metadata["features"].values()
         if not (root / spec["array"]).exists()
     ]
+    missing.extend(
+        spec["array"]
+        for spec in metadata.get("index_arrays", {}).values()
+        if not (root / spec["array"]).exists()
+    )
     if missing:
         raise FileNotFoundError(
             "Fast-cache is missing array files: " + ", ".join(sorted(missing))
@@ -93,6 +104,34 @@ def _feature_specs_for_policy(metadata: dict[str, Any]) -> dict[str, dict[str, A
     return features
 
 
+def _numeric_file_index(path: Path) -> int:
+    return int(path.stem.split("-")[-1])
+
+
+def _load_tasks(source_root: Path) -> list[str]:
+    tasks_path = source_root / "meta/tasks.parquet"
+    if not tasks_path.exists():
+        return [""]
+
+    tasks = pd.read_parquet(tasks_path)
+    if "task_index" in tasks.columns:
+        tasks = tasks.sort_values("task_index")
+    return [str(task) for task in tasks.index.to_list()]
+
+
+def _load_task_indices_from_source(source_root: Path, total_frames: int) -> np.ndarray:
+    paths = sorted((source_root / "data").glob("*/*.parquet"), key=_numeric_file_index)
+    if not paths:
+        return np.zeros(total_frames, dtype=np.int64)
+
+    task_indices = np.zeros(total_frames, dtype=np.int64)
+    for path in paths:
+        df = pd.read_parquet(path, columns=["index", "task_index"])
+        indices = df["index"].to_numpy(dtype=np.int64)
+        task_indices[indices] = df["task_index"].to_numpy(dtype=np.int64)
+    return task_indices
+
+
 class HFRVLAFastCacheDataset(Dataset):
     def __init__(self, cache_root: str | Path, *, seq_len: int | None = None):
         self.root = Path(cache_root)
@@ -107,6 +146,8 @@ class HFRVLAFastCacheDataset(Dataset):
         self._validate_array_shapes()
 
         source_root = Path(self.info["source_dataset_root"])
+        self.index_arrays = self._load_index_arrays(source_root)
+        self.tasks = _load_tasks(source_root)
         stats = load_stats(source_root)
         if stats is None:
             raise FileNotFoundError(f"Canonical stats not found under {source_root / 'meta'}")
@@ -125,6 +166,29 @@ class HFRVLAFastCacheDataset(Dataset):
         self.num_frames = self.meta.total_frames
         self.num_episodes = self.meta.total_episodes
         self.episodes = None
+
+    def _load_index_arrays(self, source_root: Path) -> dict[str, np.ndarray]:
+        total_frames = int(self.info["total_frames"])
+        arrays = {}
+        index_specs = self.info.get("index_arrays", {})
+        for key, filename in INDEX_ARRAY_FILES.items():
+            spec = index_specs.get(key)
+            path = self.root / (spec["array"] if spec is not None else filename)
+            if path.exists():
+                arrays[key] = np.load(path, mmap_mode="r")
+
+        if "index" not in arrays:
+            arrays["index"] = np.arange(total_frames, dtype=np.int64)
+        if "episode_index" not in arrays:
+            frame_indices = np.arange(total_frames, dtype=np.int64)
+            arrays["episode_index"] = np.searchsorted(
+                self.episode_ends,
+                frame_indices,
+                side="right",
+            ).astype(np.int64)
+        if "task_index" not in arrays:
+            arrays["task_index"] = _load_task_indices_from_source(source_root, total_frames)
+        return arrays
 
     def _validate_array_shapes(self) -> None:
         total_frames = int(self.info["total_frames"])
@@ -157,7 +221,16 @@ class HFRVLAFastCacheDataset(Dataset):
         if idx < 0 or idx >= len(self):
             raise IndexError(idx)
         window = self._window_indices(idx)
-        return {
+        sample = {
             key: torch.from_numpy(np.asarray(self.arrays[key][window]))
             for key in POLICY_KEY_TO_ARRAY
         }
+        task_index = int(self.index_arrays["task_index"][idx])
+        sample["index"] = torch.tensor(int(self.index_arrays["index"][idx]), dtype=torch.int64)
+        sample["episode_index"] = torch.tensor(
+            int(self.index_arrays["episode_index"][idx]),
+            dtype=torch.int64,
+        )
+        sample["task_index"] = torch.tensor(task_index, dtype=torch.int64)
+        sample["task"] = self.tasks[task_index] if 0 <= task_index < len(self.tasks) else ""
+        return sample
