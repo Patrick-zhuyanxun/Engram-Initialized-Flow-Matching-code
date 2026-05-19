@@ -39,6 +39,15 @@ Working directory:
 cd ~/Patrick/VLA_research/Hierachical_fast_reactive
 ```
 
+After changing files under `policy/lerobot_policy_hfrvla/`, reinstall the
+editable plugin before launching training:
+
+```bash
+cd ~/Robotic_infra/lerobot
+uv pip install -e ~/Patrick/VLA_research/Hierachical_fast_reactive/policy/lerobot_policy_hfrvla
+cd ~/Patrick/VLA_research/Hierachical_fast_reactive
+```
+
 For offline/local runs, set:
 
 ```bash
@@ -291,6 +300,13 @@ offline columns into contiguous `.npy` arrays. Large cached feature columns
 `numpy.memmap`, which avoids the slow random Arrow/Python path that dominated
 the run07 timing.
 
+The fast module casts cached `float16` features to its parameter dtype at the
+module boundary, so the cache can stay compact while training remains
+`float32` unless AMP is enabled. Existing fast-cache directories built before
+the auxiliary `index/task` arrays were added can still be used: the dataset
+falls back to the canonical LeRobotDataset parquet files for the small
+`task_index` column.
+
 Build once per source dataset and sequence length:
 
 ```bash
@@ -326,6 +342,25 @@ backend and should still print:
 
 ```text
 [hfrvla-train] offline dataset column pruning enabled
+```
+
+One-step smoke for validating the cache/preprocessor/model path after code
+changes:
+
+```bash
+RUN_NAME=hfrvla_fastcache_smoke \
+WANDB_ENABLE=false \
+HFRVLA_TMP_ROOT=$HOME/tmp/hfrvla \
+HFRVLA_DATASET_BACKEND=fastcache \
+HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4 \
+SEQ_LEN=4 \
+BATCH_SIZE=2 \
+NUM_WORKERS=0 \
+STEPS=1 \
+SAVE_FREQ=100 \
+LOG_FREQ=1 \
+DEVICE=cpu \
+scripts/run_hfrvla_training_foreground.sh
 ```
 
 Full run:
@@ -553,10 +588,38 @@ scripts/run_hfrvla_training_foreground.sh
 The fast module is small and dataset access dominates time. If GPU utilization stays low after the first few hundred steps:
 
 1. Prefer `HFRVLA_DATASET_BACKEND=fastcache` for real runs. It keeps the canonical LeRobotDataset intact but trains from compact memory-mapped arrays.
-2. Use `BATCH_SIZE=128` or `256` first. Larger batches mostly increase host-side feature bandwidth; they may not visibly increase VRAM because the trainable model is only ~1M parameters.
+2. Use `BATCH_SIZE=128` or `256` first, then benchmark `512` if host RAM and disk bandwidth still have headroom. Larger batches mostly increase feature bandwidth; they may not visibly increase VRAM because the trainable model is only ~1M parameters.
 3. Increase `NUM_WORKERS` to 12-16 only if RAM/swap pressure is low. If workers sit near 100% CPU and swap grows, reduce batch size before adding workers.
 4. Confirm the train log prints either `[hfrvla-train] fast-cache dataset backend enabled` or `[hfrvla-train] offline dataset column pruning enabled`. Without either, raw images may be back in the LeRobot window/collate path.
 5. If training is I/O-bound, reduce `SEQ_LEN` before increasing model-side knobs. Local single-item reads measured about `0.557s` at `SEQ_LEN=8`, `0.283s` at `SEQ_LEN=4`, `0.141s` at `SEQ_LEN=2`, and `0.075s` at `SEQ_LEN=1` on the LeRobot parquet backend.
+
+Batch size can improve throughput, but only if the larger batch increases
+samples/sec:
+
+```text
+samples/sec ~= BATCH_SIZE / (data_s + updt_s)
+```
+
+Compare short runs with identical settings except `BATCH_SIZE`. If `data_s`
+roughly doubles when the batch doubles, the input pipeline is still the
+bottleneck and bigger batches mainly change the training regime. If `updt_s`
+dominates and GPU utilization is low, larger batches can amortize overhead and
+improve throughput.
+
+Do not compare wall-clock time at fixed `STEPS` as if it were the same
+training budget. With fixed `STEPS=60000`, `BATCH_SIZE=512` sees twice as many
+samples as `BATCH_SIZE=256`. For an equal sample/epoch budget, scale steps and
+curriculum boundaries inversely with batch size. On the current 273465-frame
+dataset:
+
+```text
+1 epoch @ batch 256 ~= 1069 optimizer steps
+1 epoch @ batch 512 ~= 535 optimizer steps
+```
+
+So when doubling batch size from 256 to 512 and keeping the same sample
+exposure, halve `STEPS`, `WARMUP_STEPS`, `JOINT_STEPS`, `REFINE_STEPS`, and
+`SAVE_FREQ` in step units.
 
 Past those, the remaining storage lever is re-recording with
 `--dino-dtype float16`; the fast-cache builder already stores the derived
