@@ -54,10 +54,27 @@ class HFRVLAConfig(SmolVLAConfig):
     # ── Loss weights ──
     loss_lambda_gate: float = 1.0
     loss_lambda_contact: float = 0.1
+    # Conservative deployment-aligned objective. Training should supervise the
+    # residual that inference can actually execute: ``gate * clip(delta_a)``.
+    loss_delta_target_clip: bool = True
+    # Stage A (debate 20260521): tighter BCE positive criterion. Previously
+    # 0.02 caused the gate to label most frames "positive" once delta_a was
+    # mildly competent, locking gate_prior at ~0.95.
+    gate_improvement_margin: float = 0.05
+    loss_lambda_final: float = 1.0
+    loss_lambda_preserve: float = 0.5
+    # Stage A (debate 20260521): real rate term, no longer a token regularizer.
+    loss_lambda_gate_prior: float = 0.10
+    # Stage A (debate 20260521): explicit zero-target penalty on preserve-class
+    # states where the base is already close to expert. Approximated at
+    # training time via ``err_before < err_preserve_thresh`` to avoid a
+    # fastcache schema change.
+    loss_lambda_preserve_zero: float = 1.0
+    err_preserve_thresh: float = 0.01
 
     # ── Curriculum (sprint-2 three-stage) ──
     # Stage 0 (Warmup): only L_delta, gate + contact heads frozen.
-    # Stage 1 (Joint):  L_delta + lambda_gate*L_gate + lambda_contact*L_contact.
+    # Stage 1 (Joint):  deployment-aligned delta/final/gate losses + contact.
     # Stage 2 (Refine): same losses; LR / 10 (handled by set_training_step).
     curriculum_warmup_steps: int = 1000
     curriculum_joint_steps: int = 49000
@@ -65,6 +82,14 @@ class HFRVLAConfig(SmolVLAConfig):
 
     # ── Sequence windowing for GRU ──
     seq_len: int = 8
+
+    # ── Offline fast-only training ──
+    # The recorded HFRVLA dataset already stores SmolVLA and DINOv3 features.
+    # During training we can therefore skip constructing the frozen slow VLA
+    # and DINO backbone, reducing memory pressure before the first step.
+    offline_training_mode: bool = False
+    offline_zgoal_dim: int = 960
+    offline_zphase_dim: int = 480
 
     # ── Hook target layer names (resolved via named_modules lookup) ──
     # Format: dotted path inside `self.model` (i.e. inside VLAFlowMatching).
@@ -80,8 +105,11 @@ class HFRVLAConfig(SmolVLAConfig):
     zgoal_proj_dim: int = 256
     zphase_proj_dim: int = 256
 
-    # ── Inference safety layer ──
-    safety_joint_velocity_limit: float = 2.0   # rad/s, applied per-DoF
+    # ── Inference residual safety ──
+    # Limit only the fast residual. Do not velocity-clamp the full SmolVLA
+    # action chunk against the previous step; LIBERO actions are normalized
+    # chunk outputs, and clamping the base action breaks the frozen planner.
+    safety_joint_velocity_limit: float = 2.0
     control_dt: float = 0.1                     # 10 Hz (LIBERO HuggingFaceVLA fps)
 
     # ── Inference debug switches ──
@@ -97,11 +125,18 @@ class HFRVLAConfig(SmolVLAConfig):
     def validate_features(self) -> None:
         super().validate_features()
         if self.input_features:
-            self.input_features = {
-                key: feature
-                for key, feature in self.input_features.items()
-                if key == OBS_STATE or key.startswith(f"{OBS_IMAGES}.")
-            }
+            if self.offline_training_mode:
+                self.input_features = {
+                    key: feature
+                    for key, feature in self.input_features.items()
+                    if key == OBS_STATE
+                }
+            else:
+                self.input_features = {
+                    key: feature
+                    for key, feature in self.input_features.items()
+                    if key == OBS_STATE or key.startswith(f"{OBS_IMAGES}.")
+                }
 
     # ────────────────────────────────────────────────────────────────────
     @classmethod

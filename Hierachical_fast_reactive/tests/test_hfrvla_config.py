@@ -18,6 +18,20 @@ def test_curriculum_defaults_present():
     assert cfg.push_to_hub is False
 
 
+def test_conservative_objective_defaults_present():
+    cfg = _bare_config()
+    assert cfg.loss_delta_target_clip is True
+    # Stage A (debate 20260521): tighter BCE positive criterion.
+    assert cfg.gate_improvement_margin == 0.05
+    assert cfg.loss_lambda_final == 1.0
+    assert cfg.loss_lambda_preserve == 0.5
+    # Stage A: real rate term (was 0.02, a token regularizer).
+    assert cfg.loss_lambda_gate_prior == 0.10
+    # Stage A: explicit zero-target on preserve states.
+    assert cfg.loss_lambda_preserve_zero == 1.0
+    assert cfg.err_preserve_thresh == 0.01
+
+
 def test_curriculum_total_helper():
     cfg = _bare_config()
     assert cfg.curriculum_total_steps() == 60000
@@ -52,3 +66,19 @@ def test_validate_features_excludes_precomputed_extras_from_normalizer():
     assert "observation.images.image" in cfg.input_features
     assert "observation.state" in cfg.input_features
     assert "observation.extra.z_goal" not in cfg.input_features
+
+
+def test_offline_training_validate_features_drops_images_from_normalizer():
+    cfg = HFRVLAConfig(offline_training_mode=True)
+    cfg.input_features = {
+        "observation.images.image": PolicyFeature(type=FeatureType.VISUAL, shape=(3, 256, 256)),
+        "observation.images.image2": PolicyFeature(type=FeatureType.VISUAL, shape=(3, 256, 256)),
+        "observation.state": PolicyFeature(type=FeatureType.STATE, shape=(8,)),
+        "observation.extra.z_goal": PolicyFeature(type=FeatureType.STATE, shape=(960,)),
+    }
+
+    cfg.validate_features()
+
+    assert cfg.input_features == {
+        "observation.state": PolicyFeature(type=FeatureType.STATE, shape=(8,))
+    }
