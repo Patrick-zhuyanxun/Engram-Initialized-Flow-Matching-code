@@ -21,15 +21,17 @@ def test_curriculum_defaults_present():
 def test_conservative_objective_defaults_present():
     cfg = _bare_config()
     assert cfg.loss_delta_target_clip is True
-    # Stage A (debate 20260521): tighter BCE positive criterion.
-    assert cfg.gate_improvement_margin == 0.05
+    # Stage A v2 (calibrated 2026-05-22): margin in per-frame squared-L2
+    # units; LIBERO empirical err_before has median ~2.4, so v1 default 0.05
+    # was ~50x too small.
+    assert cfg.gate_improvement_margin == 0.5
     assert cfg.loss_lambda_final == 1.0
     assert cfg.loss_lambda_preserve == 0.5
     # Stage A: real rate term (was 0.02, a token regularizer).
     assert cfg.loss_lambda_gate_prior == 0.10
-    # Stage A: explicit zero-target on preserve states.
+    # Stage A v2: thresh in same units. v1 0.01 caught 0% of frames.
     assert cfg.loss_lambda_preserve_zero == 1.0
-    assert cfg.err_preserve_thresh == 0.01
+    assert cfg.err_preserve_thresh == 0.5
 
 
 def test_curriculum_total_helper():

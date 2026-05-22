@@ -57,20 +57,24 @@ class HFRVLAConfig(SmolVLAConfig):
     # Conservative deployment-aligned objective. Training should supervise the
     # residual that inference can actually execute: ``gate * clip(delta_a)``.
     loss_delta_target_clip: bool = True
-    # Stage A (debate 20260521): tighter BCE positive criterion. Previously
-    # 0.02 caused the gate to label most frames "positive" once delta_a was
-    # mildly competent, locking gate_prior at ~0.95.
-    gate_improvement_margin: float = 0.05
+    # Stage A v2 (debate 20260521, recalibrated 2026-05-22): margin is the
+    # absolute reduction in per-frame squared L2 error. On LIBERO the empirical
+    # ``err_before`` median is ~2.4 with p10≈0.5; the v1 default of 0.05 was
+    # ~50x too small and BCE labels were ~100% positive → gate_prior stayed at
+    # 0.9. 0.5 corresponds to roughly half the typical clipped-residual
+    # improvement at delta_max=0.2.
+    gate_improvement_margin: float = 0.5
     loss_lambda_final: float = 1.0
     loss_lambda_preserve: float = 0.5
     # Stage A (debate 20260521): real rate term, no longer a token regularizer.
     loss_lambda_gate_prior: float = 0.10
-    # Stage A (debate 20260521): explicit zero-target penalty on preserve-class
-    # states where the base is already close to expert. Approximated at
-    # training time via ``err_before < err_preserve_thresh`` to avoid a
-    # fastcache schema change.
+    # Stage A v2: explicit zero-target penalty on preserve-class states.
+    # ``err_before < err_preserve_thresh`` defines the mask. On LIBERO the
+    # empirical p10 of err_before is ~0.5 (v1 default 0.01 caught 0% of
+    # frames, so L_preserve_zero never fired). 0.5 catches roughly the bottom
+    # 10% where the base policy is already very close to the expert.
     loss_lambda_preserve_zero: float = 1.0
-    err_preserve_thresh: float = 0.01
+    err_preserve_thresh: float = 0.5
 
     # ── Curriculum (sprint-2 three-stage) ──
     # Stage 0 (Warmup): only L_delta, gate + contact heads frozen.

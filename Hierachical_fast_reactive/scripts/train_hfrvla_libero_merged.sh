@@ -60,6 +60,18 @@ OFFLINE_ZPHASE_DIM="${OFFLINE_ZPHASE_DIM:-480}"
 WARMUP_STEPS="${WARMUP_STEPS:-1000}"
 JOINT_STEPS="${JOINT_STEPS:-49000}"
 REFINE_STEPS="${REFINE_STEPS:-10000}"
+LOSS_DELTA_TARGET_CLIP="${LOSS_DELTA_TARGET_CLIP:-true}"
+# Stage A v2 defaults (calibrated 2026-05-22). Margins are in per-frame
+# squared L2 units; LIBERO err_before has median ~2.4 so v1 defaults of 0.05
+# / 0.01 were ~50x too small and caused BCE labels to stay ~100% positive
+# (gate_prior=0.9) and L_preserve_zero=0. Reproduce pre-Stage-A baseline
+# with: GATE_IMPROVEMENT_MARGIN=0.02 LOSS_LAMBDA_GATE_PRIOR=0.02 LOSS_LAMBDA_PRESERVE_ZERO=0.0
+GATE_IMPROVEMENT_MARGIN="${GATE_IMPROVEMENT_MARGIN:-0.5}"
+LOSS_LAMBDA_FINAL="${LOSS_LAMBDA_FINAL:-1.0}"
+LOSS_LAMBDA_PRESERVE="${LOSS_LAMBDA_PRESERVE:-0.5}"
+LOSS_LAMBDA_GATE_PRIOR="${LOSS_LAMBDA_GATE_PRIOR:-0.10}"
+LOSS_LAMBDA_PRESERVE_ZERO="${LOSS_LAMBDA_PRESERVE_ZERO:-1.0}"
+ERR_PRESERVE_THRESH="${ERR_PRESERVE_THRESH:-0.5}"
 
 WANDB_ENABLE="${WANDB_ENABLE:-false}"
 case "${WANDB_ENABLE,,}" in
@@ -146,6 +158,7 @@ echo "[hfrvla-train] dataset_backend=$HFRVLA_DATASET_BACKEND fastcache_root=$HFR
 echo "[hfrvla-train] output=$OUT_DIR"
 echo "[hfrvla-train] steps=$STEPS batch_size=$BATCH_SIZE num_workers=$NUM_WORKERS seq_len=$SEQ_LEN device=$DEVICE"
 echo "[hfrvla-train] curriculum warmup=$WARMUP_STEPS joint=$JOINT_STEPS refine=$REFINE_STEPS"
+echo "[hfrvla-train] objective delta_target_clip=$LOSS_DELTA_TARGET_CLIP gate_margin=$GATE_IMPROVEMENT_MARGIN final=$LOSS_LAMBDA_FINAL preserve=$LOSS_LAMBDA_PRESERVE gate_prior=$LOSS_LAMBDA_GATE_PRIOR preserve_zero=$LOSS_LAMBDA_PRESERVE_ZERO preserve_thresh=$ERR_PRESERVE_THRESH"
 echo "[hfrvla-train] offline_training_mode=true z_goal=$OFFLINE_ZGOAL_DIM z_phase=$OFFLINE_ZPHASE_DIM"
 echo "[hfrvla-train] wandb_enable=$WANDB_ENABLE"
 echo "[hfrvla-train] tmp_root=$HFRVLA_TMP_ROOT"
@@ -171,6 +184,13 @@ echo "[hfrvla-train] tmpdir=$TMPDIR"
   --policy.curriculum_warmup_steps="$WARMUP_STEPS" \
   --policy.curriculum_joint_steps="$JOINT_STEPS" \
   --policy.curriculum_refine_steps="$REFINE_STEPS" \
+  --policy.loss_delta_target_clip="$LOSS_DELTA_TARGET_CLIP" \
+  --policy.gate_improvement_margin="$GATE_IMPROVEMENT_MARGIN" \
+  --policy.loss_lambda_final="$LOSS_LAMBDA_FINAL" \
+  --policy.loss_lambda_preserve="$LOSS_LAMBDA_PRESERVE" \
+  --policy.loss_lambda_gate_prior="$LOSS_LAMBDA_GATE_PRIOR" \
+  --policy.loss_lambda_preserve_zero="$LOSS_LAMBDA_PRESERVE_ZERO" \
+  --policy.err_preserve_thresh="$ERR_PRESERVE_THRESH" \
   --policy.optimizer_lr="$LR" \
   --policy.optimizer_weight_decay="$WEIGHT_DECAY" \
   --policy.optimizer_grad_clip_norm="$GRAD_CLIP_NORM" \
