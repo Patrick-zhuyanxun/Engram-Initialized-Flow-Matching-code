@@ -74,13 +74,18 @@ class FastReactiveModule(nn.Module):
         D_dino = config.dinov3_feature_dim                   # 384
 
         # ── 1. DINOv3 backbone (frozen) ──
-        self.backbone = DINOv3Backbone(
-            model_id=config.dinov3_model_id,
-            local_repo=getattr(config, "dinov3_local_repo", None),
-            local_weights=getattr(config, "dinov3_local_weights", None),
-            arch=getattr(config, "dinov3_arch", "dinov3_vits16"),
-            frozen=config.dinov3_frozen,
-        )
+        # Offline training consumes precomputed ``dino_patches`` and does not
+        # need to allocate the DINO backbone. Inference keeps the backbone.
+        if getattr(config, "offline_training_mode", False):
+            self.backbone = None
+        else:
+            self.backbone = DINOv3Backbone(
+                model_id=config.dinov3_model_id,
+                local_repo=getattr(config, "dinov3_local_repo", None),
+                local_weights=getattr(config, "dinov3_local_weights", None),
+                arch=getattr(config, "dinov3_arch", "dinov3_vits16"),
+                frozen=config.dinov3_frozen,
+            )
 
         # ── 2. Patch projection 384 → 256 ──
         self.patch_proj = nn.Linear(D_dino, D_pool)
@@ -180,12 +185,26 @@ class FastReactiveModule(nn.Module):
         dino_patches: Optional[torch.Tensor], # (B, N, D_dino) or None
     ) -> torch.Tensor:
         """Encode a single time-step into a fused 256-d state vector."""
+        module_dtype = self.patch_proj.weight.dtype
+        proprio = proprio.to(dtype=module_dtype)
+        a_base_k = a_base_k.to(dtype=module_dtype)
+        k_idx_norm = k_idx_norm.to(dtype=module_dtype)
+        z_goal = z_goal.to(dtype=module_dtype)
+        z_phase = z_phase.to(dtype=module_dtype)
+
         # 1. Patch features
         if dino_patches is None:
             assert wrist_rgb is not None, "Either wrist_rgb or dino_patches required."
+            if self.backbone is None:
+                raise RuntimeError(
+                    "FastReactiveModule was initialized in offline_training_mode; "
+                    "pass precomputed observation.extra.dino_patches or disable "
+                    "offline_training_mode for inference."
+                )
             patches = self.backbone(wrist_rgb)
         else:
             patches = dino_patches
+        patches = patches.to(dtype=module_dtype)
         patches_proj = self.patch_proj(patches)                # (B, N, D_pool)
 
         # 2. Task-conditioned query
@@ -248,22 +267,21 @@ class FastReactiveModule(nn.Module):
         if hidden_state is None:
             hidden_state = self.init_hidden(B, device)
 
-        # Encode each step.
-        states = []
-        for t in range(T):
-            w_t = wrist_rgb[:, t] if wrist_rgb is not None else None
-            d_t = dino_patches[:, t] if dino_patches is not None else None
-            s_t = self._encode_step(
-                w_t,
-                proprio[:, t],
-                a_base_k[:, t],
-                k_idx_norm[:, t],
-                z_goal[:, t],
-                z_phase[:, t],
-                d_t,
-            )
-            states.append(s_t)
-        states = torch.stack(states, dim=1)                     # (B, T, D_pool)
+        def flatten_time(x: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+            if x is None:
+                return None
+            return x.reshape(B * T, *x.shape[2:])
+
+        state_flat = self._encode_step(
+            flatten_time(wrist_rgb),
+            flatten_time(proprio),
+            flatten_time(a_base_k),
+            flatten_time(k_idx_norm),
+            flatten_time(z_goal),
+            flatten_time(z_phase),
+            flatten_time(dino_patches),
+        )
+        states = state_flat.reshape(B, T, -1)                   # (B, T, D_pool)
 
         out, h_new = self.gru(states, hidden_state)             # (B, T, hidden)
         # Flatten time × batch for the heads.

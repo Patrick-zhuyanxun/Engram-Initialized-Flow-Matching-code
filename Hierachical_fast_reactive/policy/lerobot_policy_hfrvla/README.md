@@ -1,6 +1,11 @@
 # lerobot_policy_hfrvla
 
-**Hierarchical Fast-Reactive VLA** — a LeRobot plugin that mounts a small, trainable, wrist-camera-only residual policy on top of a frozen SmolVLA. The fast module fires at every control step and emits `(δa, gate, contact_aux)`; the final action is `SafetyLayer(a_base + g · clip(δa))`.
+**Hierarchical Fast-Reactive VLA** — a LeRobot plugin that mounts a small, trainable, wrist-camera-only residual policy on top of a frozen SmolVLA. The fast module fires at every control step and emits `(δa, gate, contact_aux)`; inference keeps the frozen `a_base` intact and only clamps the fast residual before computing `a_base + g · clip(δa)`.
+
+Training uses the same deployed action form: the delta target is clipped to
+the deployable residual range, the gate only opens when the clipped residual
+clears an improvement margin, and preservation losses penalize corrections
+that make the merged action worse than the frozen base policy.
 
 Design contract: `Hierachical_fast_reactive/paper/notes/implementation_spec.md`.
 

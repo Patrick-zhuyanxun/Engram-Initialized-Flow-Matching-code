@@ -9,6 +9,7 @@ import json
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -29,6 +30,10 @@ INDEX_TO_ARRAY = {
     "index": ("index.npy", np.int64),
     "episode_index": ("episode_index.npy", np.int64),
     "task_index": ("task_index.npy", np.int64),
+}
+STATIC_LABEL_TO_ARRAY = {
+    "observation.extra.y_correct": ("y_correct.npy", np.uint8),
+    "observation.extra.y_preserve": ("y_preserve.npy", np.uint8),
 }
 
 
@@ -106,7 +111,49 @@ def _stack_column(values: pd.Series, feature_shape: tuple[int, ...], dtype) -> n
     return stacked
 
 
-def build_fast_cache(source_root: str | Path, cache_root: str | Path, *, seq_len: int) -> None:
+def _write_static_labels(
+    cache_root: Path,
+    arrays: dict[str, np.ndarray],
+    *,
+    correct_quantile: float,
+    preserve_quantile: float,
+    static_y_preserve: bool,
+) -> dict[str, Any]:
+    action = arrays["action"]
+    a_base = arrays["observation.extra.a_base"]
+    err_offline = ((action - a_base) ** 2).sum(axis=-1)
+    if static_y_preserve:
+        correct_threshold = None
+        preserve_threshold = None
+        y_correct = np.zeros(err_offline.shape, dtype=np.uint8)
+        y_preserve = np.ones(err_offline.shape, dtype=np.uint8)
+    else:
+        correct_threshold = float(np.quantile(err_offline, correct_quantile))
+        preserve_threshold = float(np.quantile(err_offline, preserve_quantile))
+        y_correct = (err_offline > correct_threshold).astype(np.uint8)
+        y_preserve = (err_offline < preserve_threshold).astype(np.uint8)
+    np.save(cache_root / "y_correct.npy", y_correct)
+    np.save(cache_root / "y_preserve.npy", y_preserve)
+    return {
+        "mode": "static_y_preserve" if static_y_preserve else "quantile",
+        "correct_quantile": float(correct_quantile),
+        "preserve_quantile": float(preserve_quantile),
+        "correct_threshold": correct_threshold,
+        "preserve_threshold": preserve_threshold,
+        "y_correct_fraction": float(y_correct.mean()),
+        "y_preserve_fraction": float(y_preserve.mean()),
+    }
+
+
+def build_fast_cache(
+    source_root: str | Path,
+    cache_root: str | Path,
+    *,
+    seq_len: int,
+    correct_quantile: float = 0.80,
+    preserve_quantile: float = 0.50,
+    static_y_preserve: bool = False,
+) -> None:
     source_root = Path(source_root)
     cache_root = Path(cache_root)
     if cache_root.exists():
@@ -148,6 +195,13 @@ def build_fast_cache(source_root: str | Path, cache_root: str | Path, *, seq_len
         arr.flush()
     for arr in index_arrays.values():
         arr.flush()
+    static_labels = _write_static_labels(
+        cache_root,
+        arrays,
+        correct_quantile=correct_quantile,
+        preserve_quantile=preserve_quantile,
+        static_y_preserve=static_y_preserve,
+    )
 
     features = {}
     for key, (filename, dtype) in POLICY_TO_ARRAY.items():
@@ -155,6 +209,12 @@ def build_fast_cache(source_root: str | Path, cache_root: str | Path, *, seq_len
             "array": filename,
             "dtype": np.dtype(dtype).name,
             "shape": [expected, *list(info["features"][key]["shape"])],
+        }
+    for key, (filename, dtype) in STATIC_LABEL_TO_ARRAY.items():
+        features[key] = {
+            "array": filename,
+            "dtype": np.dtype(dtype).name,
+            "shape": [expected],
         }
     index_features = {}
     for key, (filename, dtype) in INDEX_TO_ARRAY.items():
@@ -173,6 +233,19 @@ def build_fast_cache(source_root: str | Path, cache_root: str | Path, *, seq_len
         "seq_len": int(seq_len),
         "features": features,
         "index_arrays": index_features,
+        "static_label_quantiles": {
+            "correct": static_labels["correct_quantile"],
+            "preserve": static_labels["preserve_quantile"],
+        },
+        "static_label_thresholds": {
+            "err_offline_correct": static_labels["correct_threshold"],
+            "err_offline_preserve": static_labels["preserve_threshold"],
+        },
+        "static_label_fractions": {
+            "y_correct": static_labels["y_correct_fraction"],
+            "y_preserve": static_labels["y_preserve_fraction"],
+        },
+        "static_label_mode": static_labels["mode"],
         "built_at": datetime.now(timezone.utc).isoformat(),
     }
     (cache_root / "meta.json").write_text(json.dumps(meta, indent=2))
@@ -183,12 +256,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--cache-root", type=Path, required=True)
     parser.add_argument("--seq-len", type=int, default=4)
+    parser.add_argument("--correct-quantile", type=float, default=0.80)
+    parser.add_argument("--preserve-quantile", type=float, default=0.50)
+    parser.add_argument(
+        "--static-y-preserve",
+        action="store_true",
+        help="Write y_preserve=1 and y_correct=0 for every frame. Use this for "
+             "successful zero_fast rollout caches where all frames are preserve-class.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    build_fast_cache(args.source_root, args.cache_root, seq_len=args.seq_len)
+    build_fast_cache(
+        args.source_root,
+        args.cache_root,
+        seq_len=args.seq_len,
+        correct_quantile=args.correct_quantile,
+        preserve_quantile=args.preserve_quantile,
+        static_y_preserve=args.static_y_preserve,
+    )
 
 
 if __name__ == "__main__":

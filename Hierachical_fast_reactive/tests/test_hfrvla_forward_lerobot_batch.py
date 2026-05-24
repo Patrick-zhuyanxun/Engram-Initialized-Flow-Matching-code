@@ -380,6 +380,216 @@ def test_stage_a_gate_detached_from_l_final_gradient():
     assert gate_logit.grad is None or gate_logit.grad.abs().sum().item() == 0.0
 
 
+def test_stage_b_correct_loss_uses_static_label_only():
+    policy = _policy_shell_for_merge(
+        HFRVLAConfig(
+            delta_max=0.2,
+            safety_joint_velocity_limit=2.0,
+            control_dt=0.1,
+            use_stage_b_objective=True,
+            loss_lambda_correct=1.0,
+            loss_lambda_preserve_zero=0.0,
+            loss_lambda_rate=0.0,
+            loss_lambda_gate=0.0,
+            loss_lambda_smooth=0.0,
+            loss_lambda_contact=0.0,
+        )
+    )
+    a_base = torch.zeros(1, 2, 7)
+    a_expert = torch.zeros(1, 2, 7)
+    a_expert[:, 1] = 1.0  # high err_before, but y_correct below says ignore it
+    out = FastReactiveOutput(
+        delta_a=torch.tensor([[[0.2] * 7, [0.0] * 7]]),
+        gate_logit=torch.zeros(1, 2),
+        gate=torch.full((1, 2), 0.5),
+        contact_logit=None,
+        hidden_state=torch.zeros(1, 2, 256),
+    )
+    batch = {
+        "observation.extra.y_correct": torch.tensor([[1, 0]], dtype=torch.uint8),
+        "observation.extra.y_preserve": torch.tensor([[0, 0]], dtype=torch.uint8),
+    }
+
+    losses = policy._compute_losses(out, a_base, a_expert, contact_label=None, batch=batch)
+
+    # The low-error first frame is still supervised because the static label is 1.
+    # SmoothL1(0.2, 0.0) = 0.5 * 0.2^2 per action dim.
+    assert losses["correct"] == pytest.approx(7 * 0.5 * 0.2**2, abs=1e-6)
+    assert torch.allclose(losses["loss"], losses["correct"])
+
+
+def test_stage_b_preserve_zero_uses_static_label_not_threshold():
+    policy = _policy_shell_for_merge(
+        HFRVLAConfig(
+            delta_max=0.2,
+            safety_joint_velocity_limit=2.0,
+            control_dt=0.1,
+            use_stage_b_objective=True,
+            loss_lambda_correct=0.0,
+            loss_lambda_preserve_zero=1.0,
+            loss_lambda_rate=0.0,
+            loss_lambda_gate=0.0,
+            loss_lambda_smooth=0.0,
+            loss_lambda_contact=0.0,
+            err_preserve_thresh=0.01,
+        )
+    )
+    a_base = torch.zeros(1, 2, 7)
+    a_expert = torch.zeros(1, 2, 7)
+    a_expert[:, 1] = 1.0  # err_before = 7, but y_preserve says preserve
+    out = FastReactiveOutput(
+        delta_a=torch.tensor([[[0.0] * 7, [0.2] * 7]]),
+        gate_logit=torch.zeros(1, 2),
+        gate=torch.full((1, 2), 0.5),
+        contact_logit=None,
+        hidden_state=torch.zeros(1, 2, 256),
+    )
+    batch = {
+        "observation.extra.y_correct": torch.tensor([[0, 0]], dtype=torch.uint8),
+        "observation.extra.y_preserve": torch.tensor([[0, 1]], dtype=torch.uint8),
+    }
+
+    losses = policy._compute_losses(out, a_base, a_expert, contact_label=None, batch=batch)
+
+    assert losses["preserve_zero"] == pytest.approx(7 * 0.2**2, abs=1e-6)
+    assert torch.allclose(losses["loss"], losses["preserve_zero"])
+
+
+def test_stage_b_focal_bce_pos_weight_dominates_on_positive():
+    cfg = HFRVLAConfig(
+        use_stage_b_objective=True,
+        loss_lambda_correct=0.0,
+        loss_lambda_preserve_zero=0.0,
+        loss_lambda_rate=0.0,
+        loss_lambda_gate=1.0,
+        loss_lambda_smooth=0.0,
+        loss_lambda_contact=0.0,
+        focal_gamma=2.0,
+        focal_pos_weight=4.0,
+    )
+    policy = _policy_shell_for_merge(cfg)
+    a_base = torch.zeros(1, 1, 7)
+    a_expert = torch.zeros(1, 1, 7)
+    out = FastReactiveOutput(
+        delta_a=torch.zeros(1, 1, 7),
+        gate_logit=torch.zeros(1, 1),
+        gate=torch.full((1, 1), 0.5),
+        contact_logit=None,
+        hidden_state=torch.zeros(1, 1, 256),
+    )
+
+    pos = policy._compute_losses(
+        out,
+        a_base,
+        a_expert,
+        contact_label=None,
+        batch={
+            "observation.extra.y_correct": torch.tensor([[1]], dtype=torch.uint8),
+            "observation.extra.y_preserve": torch.tensor([[0]], dtype=torch.uint8),
+        },
+    )["gate"]
+    neg = policy._compute_losses(
+        out,
+        a_base,
+        a_expert,
+        contact_label=None,
+        batch={
+            "observation.extra.y_correct": torch.tensor([[0]], dtype=torch.uint8),
+            "observation.extra.y_preserve": torch.tensor([[0]], dtype=torch.uint8),
+        },
+    )["gate"]
+
+    assert pos == pytest.approx(4.0 * neg, rel=1e-6)
+
+
+def test_stage_b_smooth_loss_zero_when_residuals_constant():
+    policy = _policy_shell_for_merge(
+        HFRVLAConfig(
+            use_stage_b_objective=True,
+            loss_lambda_correct=0.0,
+            loss_lambda_preserve_zero=0.0,
+            loss_lambda_rate=0.0,
+            loss_lambda_gate=0.0,
+            loss_lambda_smooth=1.0,
+            loss_lambda_contact=0.0,
+        )
+    )
+    a_base = torch.zeros(1, 4, 7)
+    a_expert = torch.zeros(1, 4, 7)
+    out = FastReactiveOutput(
+        delta_a=torch.full((1, 4, 7), 0.1),
+        gate_logit=torch.zeros(1, 4),
+        gate=torch.full((1, 4), 0.5),
+        contact_logit=None,
+        hidden_state=torch.zeros(1, 4, 256),
+    )
+    batch = {
+        "observation.extra.y_correct": torch.zeros(1, 4, dtype=torch.uint8),
+        "observation.extra.y_preserve": torch.zeros(1, 4, dtype=torch.uint8),
+    }
+
+    losses = policy._compute_losses(out, a_base, a_expert, contact_label=None, batch=batch)
+
+    assert losses["smooth"] == pytest.approx(0.0, abs=1e-8)
+    assert torch.allclose(losses["loss"], losses["smooth"])
+
+
+def test_stage_b_falls_back_to_stage_a_when_flag_false():
+    policy = _policy_shell_for_merge(
+        HFRVLAConfig(
+            use_stage_b_objective=False,
+            loss_lambda_gate=0.0,
+            loss_lambda_contact=0.0,
+            loss_lambda_final=0.0,
+            loss_lambda_preserve=0.0,
+            loss_lambda_gate_prior=0.0,
+            loss_lambda_preserve_zero=0.0,
+        )
+    )
+    a_base = torch.zeros(1, 2, 7)
+    a_expert = torch.ones(1, 2, 7)
+    out = FastReactiveOutput(
+        delta_a=torch.full((1, 2, 7), 0.2),
+        gate_logit=torch.zeros(1, 2),
+        gate=torch.full((1, 2), 0.5),
+        contact_logit=None,
+        hidden_state=torch.zeros(1, 2, 256),
+    )
+    batch = {
+        "observation.extra.y_correct": torch.ones(1, 2, dtype=torch.uint8),
+        "observation.extra.y_preserve": torch.ones(1, 2, dtype=torch.uint8),
+    }
+
+    with_labels = policy._compute_losses(
+        out,
+        a_base,
+        a_expert,
+        contact_label=None,
+        batch=batch,
+    )
+    without_labels = policy._compute_losses(out, a_base, a_expert, contact_label=None)
+
+    assert "correct" not in with_labels
+    assert torch.allclose(with_labels["loss"], without_labels["loss"])
+    assert torch.allclose(with_labels["delta"], without_labels["delta"])
+
+
+def test_stage_b_errors_clearly_without_static_labels():
+    policy = _policy_shell_for_merge(HFRVLAConfig(use_stage_b_objective=True))
+    a_base = torch.zeros(1, 2, 7)
+    a_expert = torch.zeros(1, 2, 7)
+    out = FastReactiveOutput(
+        delta_a=torch.zeros(1, 2, 7),
+        gate_logit=torch.zeros(1, 2),
+        gate=torch.full((1, 2), 0.5),
+        contact_logit=None,
+        hidden_state=torch.zeros(1, 2, 256),
+    )
+
+    with pytest.raises(ValueError, match="fast-cache schema v2 static labels"):
+        policy._compute_losses(out, a_base, a_expert, contact_label=None, batch={})
+
+
 def test_merge_keeps_base_action_unchanged_when_residual_is_zero():
     policy = _policy_shell_for_merge(
         HFRVLAConfig(delta_max=0.0, safety_joint_velocity_limit=2.0, control_dt=0.1)

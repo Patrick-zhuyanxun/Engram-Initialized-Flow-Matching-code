@@ -8,6 +8,8 @@ array cache built from that dataset and returns the same batch keys consumed by
 from __future__ import annotations
 
 import json
+from bisect import bisect_right
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -21,7 +23,8 @@ from torch.utils.data import Dataset
 ACTION = "action"
 OBS_STATE = "observation.state"
 
-CACHE_SCHEMA_VERSION = 1
+CACHE_SCHEMA_VERSION = 2
+SUPPORTED_CACHE_SCHEMA_VERSIONS = {1, CACHE_SCHEMA_VERSION}
 POLICY_KEY_TO_ARRAY = {
     OBS_STATE: "state",
     ACTION: "action",
@@ -31,6 +34,8 @@ POLICY_KEY_TO_ARRAY = {
     "observation.extra.z_phase": "z_phase",
     "observation.extra.dino_patches": "dino_patches",
     "observation.extra.contact_label": "contact_label",
+    "observation.extra.y_correct": "y_correct",
+    "observation.extra.y_preserve": "y_preserve",
 }
 INDEX_ARRAY_FILES = {
     "index": "index.npy",
@@ -67,10 +72,11 @@ def load_fast_cache_metadata(cache_root: str | Path) -> dict[str, Any]:
         raise FileNotFoundError(f"Fast-cache metadata not found: {meta_path}")
 
     metadata = json.loads(meta_path.read_text())
-    if metadata.get("schema_version") != CACHE_SCHEMA_VERSION:
+    schema_version = int(metadata.get("schema_version", -1))
+    if schema_version not in SUPPORTED_CACHE_SCHEMA_VERSIONS:
         raise ValueError(
             f"Unsupported fast-cache schema_version={metadata.get('schema_version')}; "
-            f"expected {CACHE_SCHEMA_VERSION}"
+            f"expected one of {sorted(SUPPORTED_CACHE_SCHEMA_VERSIONS)}"
         )
 
     missing = [
@@ -132,8 +138,27 @@ def _load_task_indices_from_source(source_root: Path, total_frames: int) -> np.n
     return task_indices
 
 
+def _is_root_sequence(value: Any) -> bool:
+    return isinstance(value, Sequence) and not isinstance(value, (str, bytes, Path))
+
+
 class HFRVLAFastCacheDataset(Dataset):
-    def __init__(self, cache_root: str | Path, *, seq_len: int | None = None):
+    def __init__(
+        self,
+        cache_root: str | Path | Sequence[str | Path] | None = None,
+        *,
+        roots: Sequence[str | Path] | None = None,
+        seq_len: int | None = None,
+    ):
+        if roots is not None or _is_root_sequence(cache_root):
+            root_list = list(roots if roots is not None else cache_root)
+            self._init_multi_root(root_list, seq_len=seq_len)
+            return
+
+        if cache_root is None:
+            raise ValueError("cache_root is required unless roots=[...] is provided")
+
+        self._children: list[HFRVLAFastCacheDataset] | None = None
         self.root = Path(cache_root)
         self.info = load_fast_cache_metadata(self.root)
         self.seq_len = int(seq_len or self.info.get("seq_len") or 1)
@@ -160,6 +185,68 @@ class HFRVLAFastCacheDataset(Dataset):
             fps=int(self.info["fps"]),
             total_frames=int(self.info["total_frames"]),
             total_episodes=int(self.info["total_episodes"]),
+            camera_keys=[],
+            video_keys=[],
+        )
+        self.num_frames = self.meta.total_frames
+        self.num_episodes = self.meta.total_episodes
+        self.episodes = None
+
+    def _init_multi_root(
+        self,
+        roots: Sequence[str | Path],
+        *,
+        seq_len: int | None,
+    ) -> None:
+        if not roots:
+            raise ValueError("roots must contain at least one fast-cache root")
+
+        children = [HFRVLAFastCacheDataset(root, seq_len=seq_len) for root in roots]
+        first = children[0]
+        first_feature_shapes = {
+            key: tuple(spec["shape"][1:])
+            for key, spec in first.info["features"].items()
+        }
+        for child in children[1:]:
+            feature_shapes = {
+                key: tuple(spec["shape"][1:])
+                for key, spec in child.info["features"].items()
+            }
+            if feature_shapes != first_feature_shapes:
+                raise ValueError(
+                    "Cannot concatenate fast-cache roots with different feature schemas: "
+                    f"{first.root} vs {child.root}"
+                )
+            if int(child.info["fps"]) != int(first.info["fps"]):
+                raise ValueError(
+                    "Cannot concatenate fast-cache roots with different fps values: "
+                    f"{first.root} fps={first.info['fps']} vs "
+                    f"{child.root} fps={child.info['fps']}"
+                )
+
+        self._children = children
+        lengths = [len(child) for child in children]
+        episode_counts = [child.num_episodes for child in children]
+        self._cum_lengths = np.cumsum(lengths, dtype=np.int64)
+        self._cum_episodes = np.cumsum(episode_counts, dtype=np.int64)
+        self.root = first.root
+        self.roots = [child.root for child in children]
+        self.info = dict(first.info)
+        self.info["source_dataset_root"] = [
+            child.info["source_dataset_root"] for child in children
+        ]
+        self.info["total_frames"] = int(sum(lengths))
+        self.info["total_episodes"] = int(sum(episode_counts))
+        self.seq_len = first.seq_len
+        self.tasks = first.tasks
+        self.meta = HFRVLAFastCacheMetadata(
+            root=self.root,
+            info=self.info,
+            features=first.meta.features,
+            stats=first.meta.stats,
+            fps=first.meta.fps,
+            total_frames=int(sum(lengths)),
+            total_episodes=int(sum(episode_counts)),
             camera_keys=[],
             video_keys=[],
         )
@@ -205,6 +292,8 @@ class HFRVLAFastCacheDataset(Dataset):
                 )
 
     def __len__(self) -> int:
+        if self._children is not None:
+            return int(self._cum_lengths[-1])
         return int(self.info["total_frames"])
 
     def _episode_bounds_for_index(self, idx: int) -> tuple[int, int]:
@@ -220,10 +309,20 @@ class HFRVLAFastCacheDataset(Dataset):
         idx = int(idx)
         if idx < 0 or idx >= len(self):
             raise IndexError(idx)
+        if self._children is not None:
+            child_idx = bisect_right(self._cum_lengths.tolist(), idx)
+            frame_offset = 0 if child_idx == 0 else int(self._cum_lengths[child_idx - 1])
+            episode_offset = 0 if child_idx == 0 else int(self._cum_episodes[child_idx - 1])
+            sample = self._children[child_idx][idx - frame_offset]
+            sample["index"] = sample["index"] + frame_offset
+            sample["episode_index"] = sample["episode_index"] + episode_offset
+            return sample
+
         window = self._window_indices(idx)
         sample = {
             key: torch.from_numpy(np.asarray(self.arrays[key][window]))
             for key in POLICY_KEY_TO_ARRAY
+            if key in self.arrays
         }
         task_index = int(self.index_arrays["task_index"][idx])
         sample["index"] = torch.tensor(int(self.index_arrays["index"][idx]), dtype=torch.int64)

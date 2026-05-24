@@ -8,6 +8,7 @@ Active scripts:
 - `scripts/record_hfrvla_libero.py` - one-shot or sharded recording (`--ep-from/--ep-to`)
 - `scripts/merge_hfrvla_shards_fast.py` - offline stitcher for parallel shards (file/metadata only, no re-encode)
 - `scripts/build_hfrvla_fastcache.py` - optional derived mmap cache for faster offline HFRVLA training
+- `scripts/generate_training_presentation.py` - builds the open-slide deck and bundles it into `docs/training_presentation.html`
 - `scripts/train_hfrvla_libero_merged.sh` - pinned training entrypoint for the verified merged HFRVLA dataset
 - `scripts/train_via_lerobot.py` - wrapper around `lerobot-train` that adds curriculum control
 - `scripts/package_hfrvla_checkpoint.py` - bundle SmolVLA + fast weights into a `lerobot-eval` checkpoint dir (`--disable-fast` for alignment tests)
@@ -16,6 +17,12 @@ Active scripts:
 - `lerobot-eval` - CLI evaluation, no wrapper needed
 
 Legacy scripts live in `scripts/legacy/`; see `scripts/legacy/README.md`.
+
+Codex-local automation:
+- `.agents/plugins/marketplace.json` installs the repo-local `hfrvla-training-docs-hook` plugin.
+- `docs/presentations/hfrvla-training-open-slide/` is the open-slide workspace for the training deck; edit `slides/hfrvla-training/index.tsx` for visual/content changes.
+- `.agents/plugins/plugins/hfrvla-training-docs-hook/hooks.json` runs after Codex file edits and rebuilds `docs/training_presentation.html` by calling the open-slide generator when this file, the generator, or the open-slide deck/viewer source changed.
+- Run `python3 scripts/generate_training_presentation.py --check` before committing documentation changes if you want an explicit freshness check.
 
 Spec and plan:
 - `docs/superpowers/specs/2026-05-15-hfrvla-lerobot-native-design.md`
@@ -302,10 +309,10 @@ the run07 timing.
 
 The fast module casts cached `float16` features to its parameter dtype at the
 module boundary, so the cache can stay compact while training remains
-`float32` unless AMP is enabled. Existing fast-cache directories built before
-the auxiliary `index/task` arrays were added can still be used: the dataset
-falls back to the canonical LeRobotDataset parquet files for the small
-`task_index` column.
+`float32` unless AMP is enabled. Fast-cache schema v2 also stores static Stage B
+labels, `observation.extra.y_correct` and `observation.extra.y_preserve`, plus
+their offline error thresholds in `meta.json`. Schema v1 caches still work for
+Stage A, but `--policy.use_stage_b_objective=true` requires schema v2 labels.
 
 Build once per source dataset and sequence length:
 
@@ -313,8 +320,10 @@ Build once per source dataset and sequence length:
 SEQ_LEN=4
 ~/Robotic_infra/lerobot/.venv/bin/python scripts/build_hfrvla_fastcache.py \
     --source-root checkpoints/HFRVLA_libero_v1_merged_reindexed \
-    --cache-root checkpoints/HFRVLA_libero_v1_fastcache_seq${SEQ_LEN} \
-    --seq-len "$SEQ_LEN"
+    --cache-root checkpoints/HFRVLA_libero_v1_fastcache_seq${SEQ_LEN}_v2 \
+    --seq-len "$SEQ_LEN" \
+    --correct-quantile 0.80 \
+    --preserve-quantile 0.50
 ```
 
 Train against the cache:
@@ -324,7 +333,7 @@ RUN_NAME=hfrvla_run_fastcache_seq4 \
 WANDB_ENABLE=true \
 HFRVLA_TMP_ROOT=$HOME/tmp/hfrvla \
 HFRVLA_DATASET_BACKEND=fastcache \
-HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4 \
+HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4_v2 \
 SEQ_LEN=4 \
 BATCH_SIZE=256 \
 NUM_WORKERS=8 \
@@ -335,6 +344,38 @@ Expected log line:
 
 ```text
 [hfrvla-train] fast-cache dataset backend enabled root=...
+```
+
+Stage C adds a second fast-cache root built from successful closed-loop
+`zero_fast` rollouts. Record the rollout dataset, then build its cache with
+static preserve labels:
+
+```bash
+~/Robotic_infra/lerobot/.venv/bin/python scripts/record_zero_fast_rollouts.py \
+    --policy-path checkpoints/hfrvla_zero_fast_packaged \
+    --out-root checkpoints/HFRVLA_libero_v1_zero_fast_rollouts \
+    --task-suite libero_spatial \
+    --task-ids 0,1,2,3,4,5,6,7,8,9 \
+    --episodes-per-task 10
+
+~/Robotic_infra/lerobot/.venv/bin/python scripts/build_hfrvla_fastcache.py \
+    --source-root checkpoints/HFRVLA_libero_v1_zero_fast_rollouts \
+    --cache-root checkpoints/HFRVLA_libero_v1_fastcache_seq4_v2_rollouts \
+    --seq-len 4 \
+    --static-y-preserve
+```
+
+Train with both roots by setting `HFRVLA_FASTCACHE_ROLLOUT_ROOT`; leaving it
+unset preserves the Stage A/B single-cache behavior:
+
+```bash
+HFRVLA_DATASET_BACKEND=fastcache \
+HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4_v2 \
+HFRVLA_FASTCACHE_ROLLOUT_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4_v2_rollouts \
+USE_STAGE_B=true \
+LOSS_LAMBDA_PRESERVE_ZERO=3.0 \
+SEQ_LEN=4 \
+scripts/train_hfrvla_libero_merged.sh
 ```
 
 If `HFRVLA_DATASET_BACKEND` is unset, the launcher keeps the LeRobot-native
@@ -352,7 +393,7 @@ RUN_NAME=hfrvla_fastcache_smoke \
 WANDB_ENABLE=false \
 HFRVLA_TMP_ROOT=$HOME/tmp/hfrvla \
 HFRVLA_DATASET_BACKEND=fastcache \
-HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4 \
+HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4_v2 \
 SEQ_LEN=4 \
 BATCH_SIZE=2 \
 NUM_WORKERS=0 \
@@ -451,6 +492,49 @@ therefore passed as `--policy.optimizer_*` fields, not top-level
 | `--policy.curriculum_joint_steps` | 49000 | Stage 1 length: all losses active. |
 | `--policy.curriculum_refine_steps` | 10000 | Stage 2 length: LR is reduced by 10x at entry. |
 | `--policy.seq_len` | 8 | GRU window length; drives `observation_delta_indices` and `action_delta_indices`. |
+
+### Conservative residual objective knobs
+
+The fast module is trained against the same action form used at deployment:
+`a_final = a_base + gate * clip(delta_a)`. Do not train the residual head to
+chase large raw `a_expert - a_base` values that inference will later clip away.
+This update is the main fix after the failed 60k run: the old objective made
+offline residual MSE improve while closed-loop eval got worse, because the loss
+did not match the clipped/gated action actually sent to LIBERO.
+
+| Flag | Default | Description |
+|---|---|---|
+| `--policy.loss_delta_target_clip` | `true` | Clips the supervised delta target to the deployable residual range. |
+| `--policy.gate_improvement_margin` | `0.5` | Requires the clipped residual to clear this summed-squared-error margin before the Stage A gate target opens. |
+| `--policy.loss_lambda_final` | `1.0` | MSE on the deployed merged action `a_final`. |
+| `--policy.loss_lambda_preserve` | `0.5` | Penalizes corrections whose merged action is worse than the frozen base action. |
+| `--policy.loss_lambda_gate_prior` | `0.10` | Stage A rate term on mean gate. |
+| `--policy.loss_lambda_preserve_zero` | `1.0` | Stage A zero-target penalty on frames with `err_before < err_preserve_thresh`. |
+| `--policy.err_preserve_thresh` | `0.5` | Stage A preserve threshold in summed-squared action error units. |
+
+Stage B replaces the Stage A loss with the five-term rate-distortion objective
+from `docs/hfrvla_objective_debate_20260521.md`: `correct`, `preserve_zero`,
+`rate`, focal `gate`, and temporal `smooth`. It uses the static fast-cache
+labels rather than training-time thresholds.
+
+| Flag | Default | Description |
+|---|---|---|
+| `--policy.use_stage_b_objective` | `false` | Enables the Stage B loss branch; requires fast-cache schema v2 labels. |
+| `--policy.loss_lambda_correct` | `1.0` | SmoothL1 residual correction loss on `y_correct=1` frames only. |
+| `--policy.loss_lambda_rate` | `0.5` | Mean gate plus batch budget hinge. |
+| `--policy.loss_lambda_smooth` | `0.2` | Smoothness penalty on `gate * clip(delta_a)` across the GRU window. |
+| `--policy.focal_gamma` | `2.0` | Focal BCE gamma for the static gate label. |
+| `--policy.focal_pos_weight` | `4.0` | Positive-class weight for correction events. |
+| `--policy.gate_task_budget` | `0.25` | Batch-level mean-gate budget hinge threshold. |
+
+The training presentation now splits this into three diagrams so the data flow
+is easier to audit:
+
+- `Training I/O`: separates fast-module inputs from expert-only supervision
+  targets.
+- `Fast module outputs`: shows `delta_a`, `gate`, `contact_logit`, and the
+  `a_final = a_base + gate * clip(delta_a)` merge.
+- `Learning objective`: maps each loss term to its target and training role.
 
 ### Output structure
 
@@ -551,17 +635,20 @@ patches, or roughly 2.4 MB before Arrow/Python/Tensor overhead.
 
 The apparent loss jump at `step ~= WARMUP_STEPS` is expected accounting unless
 the gradient norm also explodes. Stage 0 logs only `L_delta` because
-`loss_lambda_gate=0` and `loss_lambda_contact=0`. At Stage 1 entry, the total
-loss becomes:
+`loss_lambda_gate=0`, `loss_lambda_contact=0`, and the conservative objective
+lambdas are zeroed. At Stage 1 entry, the total loss becomes:
 
 ```text
-loss = L_delta + L_gate + 0.1 * L_contact
+loss = L_delta + L_gate + L_final + 0.5 * L_preserve
+       + 0.10 * L_gate_prior + L_preserve_zero + 0.1 * L_contact
 ```
 
 Freshly unfrozen BCE heads usually contribute about `0.69 + 0.07`, so a
-`0.30 -> 1.0` total-loss jump at `step 1000` matches the configured curriculum.
-Track component losses before treating the total-loss discontinuity as model
-divergence.
+total-loss jump at `step 1000` matches the configured curriculum. After the
+conservative objective update, also watch `final`, `preserve`, and
+`gate_prior`: a high `preserve` value means the fast module is still learning
+corrections that would harm the frozen base policy. Track component losses
+before treating the total-loss discontinuity as model divergence.
 
 Short correction-head preset:
 
@@ -570,7 +657,7 @@ RUN_NAME=hfrvla_short_seq4 \
 WANDB_ENABLE=false \
 HFRVLA_TMP_ROOT=$HOME/tmp/hfrvla \
 HFRVLA_DATASET_BACKEND=fastcache \
-HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4 \
+HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4_v2 \
 BATCH_SIZE=128 \
 NUM_WORKERS=8 \
 SEQ_LEN=4 \

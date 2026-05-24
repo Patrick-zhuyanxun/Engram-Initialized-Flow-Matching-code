@@ -75,6 +75,15 @@ class HFRVLAConfig(SmolVLAConfig):
     # 10% where the base policy is already very close to the expert.
     loss_lambda_preserve_zero: float = 1.0
     err_preserve_thresh: float = 0.5
+    # Stage B (debate 20260521): rate-distortion correction coding with static
+    # fastcache labels. Disabled by default so Stage A v2 remains unchanged.
+    use_stage_b_objective: bool = False
+    loss_lambda_correct: float = 1.0
+    loss_lambda_rate: float = 0.5
+    loss_lambda_smooth: float = 0.2
+    focal_gamma: float = 2.0
+    focal_pos_weight: float = 4.0
+    gate_task_budget: float = 0.25
 
     # ── Curriculum (sprint-2 three-stage) ──
     # Stage 0 (Warmup): only L_delta, gate + contact heads frozen.

@@ -492,7 +492,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
             z_phase=z_phase,
             dino_patches=dino_patches,
         )
-        losses = self._compute_losses(fr_out, a_base, a_expert, contact_label)
+        losses = self._compute_losses(fr_out, a_base, a_expert, contact_label, batch=batch)
         output_dict = {key: value.detach().item() for key, value in losses.items()}
         return losses["loss"], output_dict
 
@@ -512,7 +512,17 @@ class HFRVLAPolicy(SmolVLAPolicy):
         a_base: Tensor,
         a_expert: Tensor,
         contact_label: Optional[Tensor],
+        batch: Optional[dict[str, Tensor]] = None,
     ) -> dict[str, Tensor]:
+        if getattr(self.config, "use_stage_b_objective", False):
+            return self._compute_stage_b_losses(
+                out=out,
+                a_base=a_base,
+                a_expert=a_expert,
+                contact_label=contact_label,
+                batch=batch,
+            )
+
         # L_delta: train the residual that deployment can actually execute.
         target_delta = a_expert - a_base
         if getattr(self.config, "loss_delta_target_clip", True):
@@ -584,6 +594,125 @@ class HFRVLAPolicy(SmolVLAPolicy):
         if "contact" in losses:
             total = total + self.config.loss_lambda_contact * losses["contact"]
         losses["loss"] = total
+        return losses
+
+    def _stage_b_label(
+        self,
+        batch: Optional[dict[str, Tensor]],
+        key: str,
+        reference: Tensor,
+    ) -> Tensor:
+        if batch is None or key not in batch:
+            raise ValueError(
+                "Stage B objective requires fast-cache schema v2 static labels "
+                "('observation.extra.y_correct' and 'observation.extra.y_preserve'). "
+                "Rebuild with scripts/build_hfrvla_fastcache.py using a _v2 cache path."
+            )
+        label = batch[key].to(device=reference.device, dtype=reference.dtype)
+        while label.dim() > reference.dim() - 1 and label.shape[-1] == 1:
+            label = label.squeeze(-1)
+        expected_shape = reference.shape[:-1]
+        if label.shape != expected_shape:
+            raise ValueError(
+                f"Stage B label {key} has shape {tuple(label.shape)}, "
+                f"expected {tuple(expected_shape)}"
+            )
+        return label
+
+    def _compute_stage_b_losses(
+        self,
+        *,
+        out: FastReactiveOutput,
+        a_base: Tensor,
+        a_expert: Tensor,
+        contact_label: Optional[Tensor],
+        batch: Optional[dict[str, Tensor]],
+    ) -> dict[str, Tensor]:
+        u = self._clip_fast_residual(out.delta_a)
+        r_t = self._clip_fast_residual(a_expert - a_base)
+
+        y_correct = self._stage_b_label(
+            batch,
+            "observation.extra.y_correct",
+            out.delta_a,
+        )
+        y_preserve = self._stage_b_label(
+            batch,
+            "observation.extra.y_preserve",
+            out.delta_a,
+        )
+
+        # L_correct: distortion only on static correction frames.
+        correct_per_frame = F.smooth_l1_loss(
+            out.delta_a,
+            r_t,
+            reduction="none",
+        ).sum(dim=-1)
+        n_correct = y_correct.sum().clamp(min=1.0)
+        l_correct = (correct_per_frame * y_correct).sum() / n_correct
+
+        # L_preserve_zero: explicit zero target on static preserve frames.
+        preserve_per_frame = out.delta_a.pow(2).sum(dim=-1)
+        n_preserve = y_preserve.sum().clamp(min=1.0)
+        l_preserve_zero = (preserve_per_frame * y_preserve).sum() / n_preserve
+
+        # L_rate: Bernoulli gate rate plus a batch-level budget hinge.
+        g = torch.sigmoid(out.gate_logit)
+        l_budget = F.relu(g.mean() - float(self.config.gate_task_budget)) ** 2
+        l_rate = g.mean() + l_budget
+
+        # L_gate: focal BCE against the static correction label.
+        p = torch.sigmoid(out.gate_logit)
+        p_t = p * y_correct + (1 - p) * (1 - y_correct)
+        alpha = float(self.config.focal_pos_weight) * y_correct + (1 - y_correct)
+        gamma = float(self.config.focal_gamma)
+        focal_weight = (1 - p_t).clamp(min=1e-6) ** gamma
+        log_p_t = torch.log(p_t.clamp(min=1e-6))
+        l_gate = -(alpha * focal_weight * log_p_t).mean()
+
+        # L_smooth: temporal smoothness on the executed residual. Gate is
+        # detached so it remains controlled by L_gate + L_rate only.
+        gu = g.detach().unsqueeze(-1) * u
+        if gu.dim() >= 3 and gu.size(1) > 1:
+            diff = gu[:, 1:] - gu[:, :-1]
+            l_smooth = diff.pow(2).sum(dim=-1).mean()
+        else:
+            l_smooth = torch.zeros((), device=gu.device, dtype=gu.dtype)
+
+        total = (
+            self.config.loss_lambda_correct * l_correct
+            + float(getattr(self.config, "loss_lambda_preserve_zero", 2.0))
+            * l_preserve_zero
+            + self.config.loss_lambda_rate * l_rate
+            + self.config.loss_lambda_gate * l_gate
+            + self.config.loss_lambda_smooth * l_smooth
+        )
+
+        losses: dict[str, Tensor] = {
+            "correct": l_correct,
+            "preserve_zero": l_preserve_zero,
+            "rate": l_rate,
+            "gate": l_gate,
+            "smooth": l_smooth,
+            "loss": total,
+            # Legacy metric keys kept so existing dashboards/tests do not break.
+            "delta": l_correct.detach(),
+            "final": torch.zeros((), device=total.device, dtype=total.dtype),
+            "preserve": torch.zeros((), device=total.device, dtype=total.dtype),
+            "gate_prior": g.mean().detach(),
+        }
+
+        if out.contact_logit is not None and contact_label is not None:
+            target = contact_label.float()
+            if target.dim() == out.contact_logit.dim() + 1 and target.shape[-1] == 1:
+                target = target.squeeze(-1)
+            if target.shape != out.contact_logit.shape:
+                target = target.expand_as(out.contact_logit)
+            l_contact = F.binary_cross_entropy_with_logits(out.contact_logit, target)
+            losses["contact"] = l_contact
+            total = total + self.config.loss_lambda_contact * l_contact
+            losses["loss"] = total
+
         return losses
 
     # ────────────────────────────────────────────────────────────────────

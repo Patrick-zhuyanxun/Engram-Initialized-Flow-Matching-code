@@ -2,11 +2,12 @@
 """Alignment test: verify HFRVLA wrapper's I/O matches LIBERO env expectations.
 
 What it does:
-  1. Build an HFRVLA package with ``inference_disable_fast=True`` so
+  1. Run the LIBERO-adapted SmolVLA slow planner directly with ``lerobot-eval``.
+  2. Build an HFRVLA package with ``inference_disable_fast=True`` so
      ``select_action()`` short-circuits to SmolVLA's ``a_base``.
-  2. Run ``lerobot-eval`` against ``libero_spatial`` task_ids 0, 1, 2 with
+  3. Run ``lerobot-eval`` against ``libero_spatial`` task_ids 0, 1, 2 with
      5 episodes each.
-  3. Report per-task success rate.
+  4. Report per-task success rate for direct SmolVLA and zero-fast HFRVLA.
 
 Why:
   Before training the fast module, we need to confirm:
@@ -16,14 +17,14 @@ Why:
     - Normalization stats (loaded from HFRVLA_libero_v1 by default) are
       compatible with LIBERO env's raw observations.
 
-  Expected outcome: per-task success rate similar to published SmolVLA-base
-  on libero_spatial (≈60% with significant variance on 5-episode samples).
-  Anything > 0% on any task confirms the I/O is structurally sound.
+  Expected outcome: per-task success rate similar to the LIBERO-adapted
+  SmolVLA slow planner used for ``--smolvla``. Anything > 0% on any task is
+  a useful smoke signal that the I/O is structurally sound.
 
 Usage:
     python scripts/test_alignment.py \\
         --out-dir checkpoints/alignment_test \\
-        --dataset-root checkpoints/HFRVLA_libero_v1
+        --dataset-root checkpoints/HFRVLA_libero_v1_merged_reindexed
 
 Optional:
     --skip-package    Skip rebuilding the alignment checkpoint (use existing)
@@ -41,6 +42,25 @@ import subprocess
 import sys
 from pathlib import Path
 
+try:
+    from scripts.hfrvla_alignment_utils import (
+        DEFAULT_LIBERO_SMOLVLA,
+        extract_eval_metrics,
+        format_success_metric,
+        load_policy_config_json,
+        success_metric_to_fraction,
+        warn_or_validate_libero_slow_planner,
+    )
+except ModuleNotFoundError:
+    from hfrvla_alignment_utils import (
+        DEFAULT_LIBERO_SMOLVLA,
+        extract_eval_metrics,
+        format_success_metric,
+        load_policy_config_json,
+        success_metric_to_fraction,
+        warn_or_validate_libero_slow_planner,
+    )
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VENV_PY = Path.home() / "Robotic_infra/lerobot/.venv/bin/python"
 VENV_EVAL = Path.home() / "Robotic_infra/lerobot/.venv/bin/lerobot-eval"
@@ -51,13 +71,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--out-dir", type=Path,
                    default=REPO_ROOT / "checkpoints/alignment_test",
                    help="Directory for the alignment-test packaged policy.")
-    p.add_argument("--smolvla", type=str,
-                   default="/home/hucenrotia/.cache/huggingface/hub/models--lerobot--smolvla_base/snapshots/c83c3163b8ca9b7e67c509fffd9121e66cb96205",
-                   help="SmolVLA base local snapshot path (or HF repo id).")
+    p.add_argument("--smolvla", type=str, default=DEFAULT_LIBERO_SMOLVLA,
+                   help="LIBERO-adapted SmolVLA slow-planner checkpoint. Raw "
+                        "`lerobot/smolvla_base` is only a warm-start model and "
+                        "will fail the default feature-contract guard. "
+                        f"Default: {DEFAULT_LIBERO_SMOLVLA}.")
     p.add_argument("--dataset-repo-id", type=str, default="HFRVLA_libero_v1",
                    help="Source of normalization stats.")
     p.add_argument("--dataset-root", type=str,
-                   default=str(REPO_ROOT / "checkpoints/HFRVLA_libero_v1"),
+                   default=str(REPO_ROOT / "checkpoints/HFRVLA_libero_v1_merged_reindexed"),
                    help="Local dataset root for stats loading.")
     p.add_argument("--dinov3-repo", type=str,
                    default=str(REPO_ROOT / "checkpoints/dinov3_src"))
@@ -76,6 +98,13 @@ def parse_args() -> argparse.Namespace:
                    help="Root for per-task eval output dirs.")
     p.add_argument("--skip-package", action="store_true",
                    help="Reuse an existing packaged checkpoint in --out-dir.")
+    p.add_argument("--skip-baseline", action="store_true",
+                   help="Skip direct SmolVLA baseline eval and only run the "
+                        "zero-fast HFRVLA wrapper.")
+    p.add_argument("--allow-feature-remap", action="store_true",
+                   help="Forward to package_hfrvla_checkpoint.py for low-level "
+                        "debugging with a non-LIBERO SmolVLA config. This should "
+                        "not be used for a real alignment pass.")
     return p.parse_args()
 
 
@@ -92,19 +121,33 @@ def run_package(args) -> None:
         "--dataset-repo-id", args.dataset_repo_id,
         "--dataset-root", args.dataset_root,
     ]
+    if args.allow_feature_remap:
+        cmd.append("--allow-feature-remap")
     print(f"\n[align] $ {' '.join(cmd)}\n", flush=True)
     subprocess.run(cmd, check=True, cwd=REPO_ROOT)
 
 
-def run_eval_one_task(args, task_id: int, out_subdir: Path) -> dict:
+def run_eval_one_task(args, task_id: int, out_subdir: Path, policy_path: str | Path) -> dict:
     """Run lerobot-eval for one task_id; return parsed eval_info.json."""
+    tmp_root = Path(os.environ.get("HFRVLA_TMP_ROOT", Path.home() / "tmp" / "hfrvla")).expanduser()
+    hf_datasets_cache = Path(os.environ.get("HF_DATASETS_CACHE", tmp_root / "hf_datasets")).expanduser()
+    tmpdir = Path(os.environ.get("TMPDIR", tmp_root / "tmp")).expanduser()
+    numba_cache = Path(os.environ.get("NUMBA_CACHE_DIR", tmp_root / "numba")).expanduser()
+    mpl_cache = Path(os.environ.get("MPLCONFIGDIR", tmp_root / "matplotlib")).expanduser()
+    for path in (hf_datasets_cache, tmpdir, numba_cache, mpl_cache):
+        path.mkdir(parents=True, exist_ok=True)
     env_extras = {
         **os.environ,
-        "NUMBA_CACHE_DIR": "/tmp/hfrvla_numba_cache",
+        "HF_DATASETS_CACHE": str(hf_datasets_cache),
+        "TMPDIR": str(tmpdir),
+        "TMP": str(tmpdir),
+        "TEMP": str(tmpdir),
+        "NUMBA_CACHE_DIR": str(numba_cache),
+        "MPLCONFIGDIR": str(mpl_cache),
     }
     cmd = [
         str(VENV_EVAL),
-        f"--policy.path={args.out_dir}",
+        f"--policy.path={policy_path}",
         "--env.type=libero",
         f"--env.task={args.suite}",
         f"--env.task_ids=[{task_id}]",
@@ -133,6 +176,16 @@ def main() -> None:
     args.eval_output_root.mkdir(parents=True, exist_ok=True)
     task_ids = [int(t.strip()) for t in args.task_ids.split(",") if t.strip()]
 
+    raw_smolvla_config = load_policy_config_json(args.smolvla)
+    try:
+        warn_or_validate_libero_slow_planner(
+            raw_smolvla_config,
+            source=args.smolvla,
+            allow_feature_remap=args.allow_feature_remap,
+        )
+    except ValueError as exc:
+        raise SystemExit(f"[align] {exc}") from exc
+
     if not args.skip_package:
         run_package(args)
     else:
@@ -145,16 +198,33 @@ def main() -> None:
     print(f"\n[align] running eval on {args.suite} task_ids {task_ids} "
           f"({args.n_episodes} episodes each)\n", flush=True)
 
-    results = []
+    baseline_results = []
+    if not args.skip_baseline:
+        print("\n[align] direct SmolVLA baseline eval\n", flush=True)
+        for tid in task_ids:
+            out_sub = args.eval_output_root / f"baseline_{args.suite}_task{tid}"
+            info = run_eval_one_task(args, tid, out_sub, args.smolvla)
+            metrics = extract_eval_metrics(info)
+            baseline_results.append({
+                "suite": args.suite,
+                "task_id": tid,
+                "n_episodes": args.n_episodes,
+                "metrics": metrics,
+                "eval_info": info,
+            })
+
+    wrapper_results = []
+    print("\n[align] HFRVLA zero-fast wrapper eval\n", flush=True)
     for tid in task_ids:
-        out_sub = args.eval_output_root / f"{args.suite}_task{tid}"
-        info = run_eval_one_task(args, tid, out_sub)
-        aggregated = info.get("aggregated", info)
-        results.append({
+        out_sub = args.eval_output_root / f"hfrvla_zero_fast_{args.suite}_task{tid}"
+        info = run_eval_one_task(args, tid, out_sub, args.out_dir)
+        metrics = extract_eval_metrics(info)
+        wrapper_results.append({
             "suite": args.suite,
             "task_id": tid,
             "n_episodes": args.n_episodes,
-            "aggregated": aggregated,
+            "metrics": metrics,
+            "eval_info": info,
         })
 
     # ── Report ─────────────────────────────────────────────────────────────
@@ -163,27 +233,48 @@ def main() -> None:
     print("=" * 68)
     total_success = 0
     total_eps = 0
-    for r in results:
-        ag = r["aggregated"]
-        succ = ag.get("pc_success") or ag.get("success_rate") or ag.get("avg_max_reward") or "?"
-        sum_rew = ag.get("avg_sum_reward")
+    baseline_by_task = {r["task_id"]: r for r in baseline_results}
+    for r in wrapper_results:
+        metrics = r["metrics"]
+        succ = metrics.get("pc_success")
+        if succ is None:
+            succ = metrics.get("success_rate")
+        if succ is None:
+            succ = metrics.get("avg_max_reward")
+        baseline_succ = None
+        if r["task_id"] in baseline_by_task:
+            baseline_metrics = baseline_by_task[r["task_id"]]["metrics"]
+            baseline_succ = baseline_metrics.get("pc_success")
+            if baseline_succ is None:
+                baseline_succ = baseline_metrics.get("success_rate")
+            if baseline_succ is None:
+                baseline_succ = baseline_metrics.get("avg_max_reward")
+        sum_rew = metrics.get("avg_sum_reward")
+        succ_text = format_success_metric(succ)
+        baseline_text = "skipped" if args.skip_baseline else format_success_metric(baseline_succ)
         print(f"  task {r['task_id']:>2}: n_ep={r['n_episodes']}  "
-              f"success={succ}  avg_sum_reward={sum_rew}")
-        if isinstance(succ, (int, float)):
-            total_success += succ * r["n_episodes"]
+              f"baseline={baseline_text}  zero_fast={succ_text}  "
+              f"avg_sum_reward={sum_rew}")
+        succ_fraction = success_metric_to_fraction(succ)
+        if succ_fraction is not None:
+            total_success += succ_fraction * r["n_episodes"]
             total_eps += r["n_episodes"]
     if total_eps:
         overall = total_success / total_eps
         print("-" * 68)
         print(f"  overall: {overall * 100:.1f}% success over {total_eps} eps")
     print("=" * 68)
-    print("\nReference: published SmolVLA-base on libero_spatial ≈ 60% (full suite).")
-    print("Small N (5 ep/task) gives high variance; treat 0% as a fail signal,")
-    print("any nonzero per-task success as I/O alignment passing.")
+    print("\nReference: compare against the same LIBERO-adapted SmolVLA slow planner.")
+    print("Small N (5 ep/task) gives high variance. If the direct baseline is 0%,")
+    print("debug the slow planner/eval setup first. If baseline works but zero-fast")
+    print("HFRVLA collapses, debug wrapper I/O, normalization, and action postprocessing.")
 
     out_json = args.eval_output_root / "alignment_summary.json"
     with open(out_json, "w") as f:
-        json.dump(results, f, indent=2)
+        json.dump({
+            "baseline": baseline_results,
+            "hfrvla_zero_fast": wrapper_results,
+        }, f, indent=2)
     print(f"\n[align] summary written to {out_json}")
 
 

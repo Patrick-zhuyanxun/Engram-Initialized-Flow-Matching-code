@@ -100,6 +100,7 @@ def test_build_fast_cache_writes_float16_large_arrays(tmp_path):
     build_fast_cache(source, cache, seq_len=3)
 
     meta = json.loads((cache / "meta.json").read_text())
+    assert meta["schema_version"] == 2
     assert meta["total_frames"] == 4
     assert np.load(cache / "episode_starts.npy").tolist() == [0, 2]
     assert np.load(cache / "episode_ends.npy").tolist() == [2, 4]
@@ -107,3 +108,29 @@ def test_build_fast_cache_writes_float16_large_arrays(tmp_path):
     assert meta["index_arrays"]["task_index"]["array"] == "task_index.npy"
     assert np.load(cache / "z_goal.npy", mmap_mode="r").dtype == np.float16
     assert np.load(cache / "dino_patches.npy", mmap_mode="r").shape == (4, 196, 384)
+    assert np.load(cache / "y_correct.npy").dtype == np.uint8
+    assert np.load(cache / "y_preserve.npy").dtype == np.uint8
+    assert np.load(cache / "y_correct.npy").shape == (4,)
+    assert meta["features"]["observation.extra.y_correct"]["array"] == "y_correct.npy"
+    assert meta["static_label_quantiles"] == {"correct": 0.8, "preserve": 0.5}
+    assert meta["static_label_fractions"]["y_correct"] == 0.25
+    assert meta["static_label_fractions"]["y_preserve"] == 0.25
+
+
+def test_build_fast_cache_static_y_preserve_marks_all_frames_preserve(tmp_path):
+    source = tmp_path / "source"
+    cache = tmp_path / "cache"
+    _write_source(source)
+
+    build_fast_cache(source, cache, seq_len=3, static_y_preserve=True)
+
+    meta = json.loads((cache / "meta.json").read_text())
+    assert meta["static_label_mode"] == "static_y_preserve"
+    assert meta["static_label_thresholds"] == {
+        "err_offline_correct": None,
+        "err_offline_preserve": None,
+    }
+    assert np.load(cache / "y_correct.npy").tolist() == [0, 0, 0, 0]
+    assert np.load(cache / "y_preserve.npy").tolist() == [1, 1, 1, 1]
+    assert meta["static_label_fractions"]["y_correct"] == 0.0
+    assert meta["static_label_fractions"]["y_preserve"] == 1.0

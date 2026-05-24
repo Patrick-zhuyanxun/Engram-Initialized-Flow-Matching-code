@@ -136,6 +136,17 @@ def _make_fastcache_dataset(cfg):
     policy = getattr(cfg, "policy", cfg)
     seq_len = int(getattr(policy, "seq_len", 1))
     cache_root = Path(root).expanduser()
+    rollout_root_raw = os.environ.get("HFRVLA_FASTCACHE_ROLLOUT_ROOT", "").strip()
+    if rollout_root_raw:
+        rollout_root = Path(rollout_root_raw).expanduser()
+        dataset = HFRVLAFastCacheDataset(roots=[cache_root, rollout_root], seq_len=seq_len)
+        print(
+            "[hfrvla-train] fast-cache dataset backend enabled "
+            f"roots=[{cache_root}, {rollout_root}]",
+            flush=True,
+        )
+        return dataset
+
     dataset = HFRVLAFastCacheDataset(cache_root, seq_len=seq_len)
     print(
         f"[hfrvla-train] fast-cache dataset backend enabled root={cache_root}",

@@ -28,8 +28,9 @@ from pathlib import Path
 
 import torch
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
 HFRVLA_CACHE_ROOT = Path(
-    os.environ.get("HFRVLA_CACHE_ROOT", Path.home() / ".cache" / "hfrvla")
+    os.environ.get("HFRVLA_CACHE_ROOT", Path.home() / "tmp" / "hfrvla")
 ).expanduser()
 HFRVLA_HF_DATASETS_CACHE = HFRVLA_CACHE_ROOT / "hf_datasets"
 HFRVLA_TMPDIR = HFRVLA_CACHE_ROOT / "tmp"
@@ -38,7 +39,7 @@ HFRVLA_TMPDIR.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("HF_DATASETS_CACHE", str(HFRVLA_HF_DATASETS_CACHE))
 os.environ.setdefault("TMPDIR", str(HFRVLA_TMPDIR))
 
-POLICY_SRC = Path(__file__).resolve().parents[1] / "policy" / "lerobot_policy_hfrvla" / "src"
+POLICY_SRC = REPO_ROOT / "policy" / "lerobot_policy_hfrvla" / "src"
 if POLICY_SRC.exists():
     sys.path.insert(0, str(POLICY_SRC))
 
@@ -52,6 +53,19 @@ from lerobot_policy_hfrvla.configuration_hfrvla import HFRVLAConfig
 from lerobot_policy_hfrvla.dinov3_backbone import DINOv3Backbone
 from lerobot_policy_hfrvla.modeling_hfrvla import HFRVLAPolicy
 from lerobot_policy_hfrvla.processor_hfrvla import normalize_for_dinov3
+
+try:
+    from scripts.hfrvla_alignment_utils import (
+        DEFAULT_LIBERO_SMOLVLA,
+        load_policy_config_json,
+        warn_or_validate_libero_slow_planner,
+    )
+except ModuleNotFoundError:
+    from hfrvla_alignment_utils import (
+        DEFAULT_LIBERO_SMOLVLA,
+        load_policy_config_json,
+        warn_or_validate_libero_slow_planner,
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -74,7 +88,13 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Local directory for the new dataset. Must not already exist.",
     )
-    parser.add_argument("--smolvla", default="lerobot/smolvla_base")
+    parser.add_argument(
+        "--smolvla",
+        default=DEFAULT_LIBERO_SMOLVLA,
+        help="LIBERO-adapted SmolVLA slow-planner checkpoint. Do not use raw "
+             "`lerobot/smolvla_base` unless --allow-feature-remap is set for debugging. "
+             f"Default: {DEFAULT_LIBERO_SMOLVLA}.",
+    )
 
     parser.add_argument("--dinov3-repo", type=str, required=True)
     parser.add_argument("--dinov3-weights", type=str, required=True)
@@ -105,6 +125,13 @@ def parse_args() -> argparse.Namespace:
         default=64,
         help="Number of wrist frames to forward through DINOv3 per call. "
              "Larger = better GPU utilization, more VRAM. 64 fits comfortably on a 24 GB GPU at 224x224.",
+    )
+    parser.add_argument(
+        "--allow-feature-remap",
+        action="store_true",
+        help="Allow recording with a SmolVLA checkpoint whose own config is not "
+             "already LIBERO-shaped. This records weak/misaligned a_base features "
+             "unless you know exactly why you need it.",
     )
     parser.add_argument("--device", default="cuda")
     return parser.parse_args()
@@ -159,8 +186,19 @@ def _episode_bounds(src: LeRobotDataset, ep_idx: int) -> tuple[int, int, str]:
 
 def main() -> None:
     args = parse_args()
-    args.out_root.parent.mkdir(parents=True, exist_ok=True)
     device = torch.device(args.device)
+
+    raw_smolvla_config = load_policy_config_json(args.smolvla)
+    try:
+        warn_or_validate_libero_slow_planner(
+            raw_smolvla_config,
+            source=args.smolvla,
+            allow_feature_remap=args.allow_feature_remap,
+        )
+    except ValueError as exc:
+        raise SystemExit(f"[record] {exc}") from exc
+
+    args.out_root.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"[record] loading source dataset: {args.src_repo_id}", flush=True)
     src_episodes = list(range(args.max_episodes)) if args.max_episodes is not None else None

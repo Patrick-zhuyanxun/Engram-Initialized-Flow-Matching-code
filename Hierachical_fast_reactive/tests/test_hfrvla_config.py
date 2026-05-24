@@ -32,6 +32,15 @@ def test_conservative_objective_defaults_present():
     # Stage A v2: thresh in same units. v1 0.01 caught 0% of frames.
     assert cfg.loss_lambda_preserve_zero == 1.0
     assert cfg.err_preserve_thresh == 0.5
+    # Stage B defaults are present but disabled so Stage A v2 remains the
+    # default objective.
+    assert cfg.use_stage_b_objective is False
+    assert cfg.loss_lambda_correct == 1.0
+    assert cfg.loss_lambda_rate == 0.5
+    assert cfg.loss_lambda_smooth == 0.2
+    assert cfg.focal_gamma == 2.0
+    assert cfg.focal_pos_weight == 4.0
+    assert cfg.gate_task_budget == 0.25
 
 
 def test_curriculum_total_helper():

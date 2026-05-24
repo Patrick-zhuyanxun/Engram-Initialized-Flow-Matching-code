@@ -9,10 +9,10 @@ copied; B/C/D never got appended.
 This script bypasses ``LeRobotDataset`` entirely. It manipulates files +
 metadata directly:
 
-  1. Hardlink each shard's ``data/chunk-000/file-{k}.parquet`` into the
-     merged dir with an offset rename. For shards whose local task_index
-     mapping differs from the global one, rewrite the ``task_index``
-     column in-flight.
+  1. Hardlink or rewrite each shard's ``data/chunk-000/file-{k}.parquet`` into
+     the merged dir with an offset rename. Rewritten shards get global
+     ``episode_index`` and ``index`` offsets; shards whose local task_index
+     mapping differs from the global one also rewrite ``task_index``.
   2. Concatenate per-shard ``meta/episodes/chunk-000/file-000.parquet``
      after offsetting ``episode_index``, ``data/file_index``,
      ``dataset_{from,to}_index``.
@@ -113,7 +113,28 @@ def _compute_offsets(shards):
     return ep_off, fr_off, fi_off, infos
 
 
-def _link_data_files(shards, fi_offsets, remaps, out_data_dir, *, use_copy):
+def _offset_numeric_column(table, column_name, offset):
+    if offset == 0 or column_name not in table.column_names:
+        return table
+    col_idx = table.schema.get_field_index(column_name)
+    field = table.schema.field(col_idx)
+    values = table.column(col_idx).combine_chunks().to_numpy(zero_copy_only=False)
+    new_array = pa.array(values + offset, type=field.type)
+    return table.set_column(col_idx, field, new_array)
+
+
+def _remap_task_index(table, remap):
+    if "task_index" not in table.column_names:
+        return table
+    col_idx = table.schema.get_field_index("task_index")
+    field = table.schema.field(col_idx)
+    old = table.column(col_idx).to_pylist()
+    new = [remap[v] for v in old]
+    new_array = pa.array(new, type=field.type)
+    return table.set_column(col_idx, field, new_array)
+
+
+def _link_data_files(shards, ep_offsets, fr_offsets, fi_offsets, remaps, out_data_dir, *, use_copy):
     """Hardlink/copy data parquet files with offset renames.
 
     For shards with non-identity task_index remap, rewrite the column.
@@ -124,10 +145,13 @@ def _link_data_files(shards, fi_offsets, remaps, out_data_dir, *, use_copy):
     for i, shard in enumerate(shards):
         remap = remaps[i]
         identity = all(k == v for k, v in remap.items())
+        ep_offset = ep_offsets[i]
+        fr_offset = fr_offsets[i]
         offset = fi_offsets[i]
         src_dir = shard / "data/chunk-000"
         files = sorted(src_dir.glob("file-*.parquet"))
         print(f"  shard {shard.name}: {len(files)} files, file_offset={offset}, "
+              f"episode_offset={ep_offset}, frame_offset={fr_offset}, "
               f"identity_remap={identity}", flush=True)
         for j, fp in enumerate(files):
             local_idx = int(fp.stem.split("-")[1])
@@ -135,20 +159,18 @@ def _link_data_files(shards, fi_offsets, remaps, out_data_dir, *, use_copy):
             dst = out_data_dir / f"file-{new_idx:03d}.parquet"
             if dst.exists():
                 dst.unlink()
-            if identity:
+            needs_rewrite = (not identity) or ep_offset != 0 or fr_offset != 0
+            if not needs_rewrite:
                 if use_copy:
                     shutil.copy2(fp, dst)
                 else:
                     os.link(fp, dst)
             else:
                 table = pq.read_table(fp)
-                if "task_index" in table.column_names:
-                    col_idx = table.schema.get_field_index("task_index")
-                    field = table.schema.field(col_idx)
-                    old = table.column(col_idx).to_pylist()
-                    new = [remap[v] for v in old]
-                    new_array = pa.array(new, type=field.type)
-                    table = table.set_column(col_idx, field, new_array)
+                table = _offset_numeric_column(table, "episode_index", ep_offset)
+                table = _offset_numeric_column(table, "index", fr_offset)
+                if not identity:
+                    table = _remap_task_index(table, remap)
                 pq.write_table(table, dst, compression="snappy")
             total_written += 1
             if total_written % 100 == 0:
@@ -162,7 +184,10 @@ def _merge_episodes(shards, ep_off, fr_off, fi_off, out_eps_dir):
     """Concatenate per-shard episodes parquet with offsets applied."""
     dfs = []
     for i, shard in enumerate(shards):
-        df = pd.read_parquet(shard / "meta/episodes/chunk-000/file-000.parquet")
+        episode_files = sorted((shard / "meta/episodes").glob("chunk-*/*.parquet"))
+        if not episode_files:
+            raise FileNotFoundError(f"No episode metadata parquet files under {shard / 'meta/episodes'}")
+        df = pd.concat([pd.read_parquet(path) for path in episode_files], ignore_index=True)
         df = df.copy()
         df["episode_index"] = df["episode_index"] + ep_off[i]
         df["data/file_index"] = df["data/file_index"] + fi_off[i]
@@ -328,7 +353,7 @@ def main() -> None:
     print(f"[merge] step 3: link/copy data files")
     out_data_dir = args.out_root / "data/chunk-000"
     total_files = _link_data_files(
-        args.shards, fi_off, remaps, out_data_dir, use_copy=args.copy,
+        args.shards, ep_off, fr_off, fi_off, remaps, out_data_dir, use_copy=args.copy,
     )
     print(f"  total data files written: {total_files}", flush=True)
 
