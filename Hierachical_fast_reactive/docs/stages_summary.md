@@ -100,10 +100,34 @@ These break the "small-model-as-compression" invariant of the original research:
 
 Each of these is a different research direction. None continue the "fix the loss" line.
 
+## Per-suite generalization (untested)
+
+Attempted to evaluate Stage A v2 / B / C across `libero_object`, `libero_goal`,
+and `libero_10` to confirm the 24/50 spatial result generalizes. Killed after
+~4 hours because evaluating non-spatial suites is impractically slow on this
+setup:
+
+| Suite | Per-step rate (single env, batch=1) | Mean ep length when zero_fast fails | Eval cost per ckpt (10 ep/task) |
+|---|---:|---:|---:|
+| libero_spatial | ~0.04 s/step (many early-terminations) | ~varies | **~8 min** (verified) |
+| libero_object | ~7 s/step (CPU-bound sim+render, no early-term) | 280 steps (timeout) | ~5 hours |
+| libero_goal | ~7 s/step | 300 steps (timeout) | ~27 hours |
+
+Root cause: `zero_fast` (and presumably Stage A/B/C) achieves 0% running
+success on object/goal/10 → every episode runs to timeout. Each step is
+CPU-bound sim+render at ~7 s/step regardless of batch_size (`batch_size>1`
+doubles env count but step time doubles too — same throughput; both are CPU
+contention, not GPU). 4 checkpoints × 3 suites × ~15 hr avg = ~180 hr eval
+budget required; not within scope.
+
+**The 24/50 ≈ 48% finding on spatial may or may not generalize.** Without
+multi-suite numbers, the production recommendation is: Stage A v2 on spatial
+is a verified +1 over `zero_fast`; behavior on other suites is unknown.
+
 ## Recommended next steps if continuing this research
 
 1. **Ship Stage A v2** as the production HFRVLA. It's the simplest implementation with the best validated result.
-2. **Run multi-suite eval** (libero_object, libero_goal, libero_10, libero_90) — confirm that the 24/50 → 48% improvement on spatial generalizes to other suites OR find a suite where Stage A is dramatically better than zero_fast.
+2. **Multi-suite eval blocker**: invest in either (a) a faster LIBERO renderer (offscreen with hardware GL), (b) reducing episode count to 3/task as a proxy signal, or (c) using a CPU pool to parallelize multiple suites simultaneously.
 3. **Per-task hyperparameter selection** — for any deployment, use task-specific `inference_disable_fast` flags. Stage A v2 wins on tasks 1, 3, 8, 9; Stage C wins on tasks 4, 5. A meta-policy that picks the right variant per task could be the practical sweet spot.
 4. **If continuing to fix the loss**: stop. The data above is enough evidence to redirect the research toward base-model upgrades or RL fine-tuning. Further offline objective design is unlikely to break 24/50 without those.
 
