@@ -1,0 +1,9 @@
+source_csv,sweep_id,policy,metadata_profile,tags,notes
+outputs/action_steps_eval_sweep/results.csv,action_steps_eval_sweep,hfrvla,hfrvla_30k,a2c2;wrist;seq2;30k,plan=50; exec/replan swept
+outputs/action_steps_eval_sweep/results.csv,action_steps_eval_sweep,smolvla,smolvla_libero,baseline;smolvla,plan=50; exec/replan swept
+outputs/chunk_size_eval_sweep/results.csv,chunk_size_eval_sweep,hfrvla,hfrvla_30k,a2c2;wrist;seq2;30k,plan=exec=replan swept
+outputs/chunk_size_eval_sweep/results.csv,chunk_size_eval_sweep,smolvla,smolvla_libero,baseline;smolvla,plan=exec=replan swept
+outputs/action_steps_eval_sweep_no_resclip/results.csv,action_steps_eval_sweep_no_resclip,hfrvla,hfrvla_30k,a2c2;wrist;seq2;30k;no_residual_clip,plan=50; exec/replan swept; residual clip off
+outputs/chunk_size_eval_sweep_no_resclip/results.csv,chunk_size_eval_sweep_no_resclip,hfrvla,hfrvla_30k,a2c2;wrist;seq2;30k;no_residual_clip,plan=exec=replan swept; residual clip off
+outputs/action_step8_alpha_clip_sweep/results.csv,action_step8_alpha_clip_sweep,hfrvla,hfrvla_30k,a2c2;wrist;seq2;30k;n8;alpha_clip,plan=50; exec=8; alpha x delta_max swept
+outputs/hfrvla_lrwd_alpha075_clip02_eval/results.csv,hfrvla_lrwd_alpha075_clip02_eval,hfrvla,hfrvla_lrwd_b512_50k,hfrvla;wrist;seq2;b512;50k;lr_wd;alpha075_clip02,plan=50; exec=8; replan=8; alpha=0.75; delta_max=0.2; compare to SmolVLA plan50 exec8 baseline; lr/wd swept

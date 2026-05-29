@@ -313,15 +313,16 @@ module boundary, so the cache can stay compact while training remains
 labels, `observation.extra.y_correct` and `observation.extra.y_preserve`, plus
 their offline error thresholds in `meta.json`. Schema v1 caches still work for
 Stage A, but `--policy.use_stage_b_objective=true` requires schema v2 labels.
+The fast-cache is frame-level storage: it does not bake in a sequence length.
+`SEQ_LEN` is a training-time sampling/windowing choice passed through
+`--policy.seq_len`.
 
-Build once per source dataset and sequence length:
+Build once per source dataset:
 
 ```bash
-SEQ_LEN=4
 ~/Robotic_infra/lerobot/.venv/bin/python scripts/build_hfrvla_fastcache.py \
     --source-root checkpoints/HFRVLA_libero_v1_merged_reindexed \
-    --cache-root checkpoints/HFRVLA_libero_v1_fastcache_seq${SEQ_LEN}_v2 \
-    --seq-len "$SEQ_LEN" \
+    --cache-root checkpoints/HFRVLA_libero_v1_fastcache_v2 \
     --correct-quantile 0.80 \
     --preserve-quantile 0.50
 ```
@@ -333,7 +334,7 @@ RUN_NAME=hfrvla_run_fastcache_seq4 \
 WANDB_ENABLE=true \
 HFRVLA_TMP_ROOT=$HOME/tmp/hfrvla \
 HFRVLA_DATASET_BACKEND=fastcache \
-HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4_v2 \
+HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_v2 \
 SEQ_LEN=4 \
 BATCH_SIZE=256 \
 NUM_WORKERS=8 \
@@ -360,8 +361,7 @@ static preserve labels:
 
 ~/Robotic_infra/lerobot/.venv/bin/python scripts/build_hfrvla_fastcache.py \
     --source-root checkpoints/HFRVLA_libero_v1_zero_fast_rollouts \
-    --cache-root checkpoints/HFRVLA_libero_v1_fastcache_seq4_v2_rollouts \
-    --seq-len 4 \
+    --cache-root checkpoints/HFRVLA_libero_v1_fastcache_v2_rollouts \
     --static-y-preserve
 ```
 
@@ -370,8 +370,8 @@ unset preserves the Stage A/B single-cache behavior:
 
 ```bash
 HFRVLA_DATASET_BACKEND=fastcache \
-HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4_v2 \
-HFRVLA_FASTCACHE_ROLLOUT_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4_v2_rollouts \
+HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_v2 \
+HFRVLA_FASTCACHE_ROLLOUT_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_v2_rollouts \
 USE_STAGE_B=true \
 LOSS_LAMBDA_PRESERVE_ZERO=3.0 \
 SEQ_LEN=4 \
@@ -393,7 +393,7 @@ RUN_NAME=hfrvla_fastcache_smoke \
 WANDB_ENABLE=false \
 HFRVLA_TMP_ROOT=$HOME/tmp/hfrvla \
 HFRVLA_DATASET_BACKEND=fastcache \
-HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4_v2 \
+HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_v2 \
 SEQ_LEN=4 \
 BATCH_SIZE=2 \
 NUM_WORKERS=0 \
@@ -491,9 +491,321 @@ therefore passed as `--policy.optimizer_*` fields, not top-level
 | `--policy.curriculum_warmup_steps` | 1000 | Stage 0 length: delta only, heads frozen. |
 | `--policy.curriculum_joint_steps` | 49000 | Stage 1 length: all losses active. |
 | `--policy.curriculum_refine_steps` | 10000 | Stage 2 length: LR is reduced by 10x at entry. |
-| `--policy.seq_len` | 8 | GRU window length; drives `observation_delta_indices` and `action_delta_indices`. |
+| `--policy.seq_len` | 8 | Training window length; gated mode consumes the full window, while A2C2 mode requires at least 2 frames and uses the previous/current pair. |
 
-### Conservative residual objective knobs
+### A2C2-Wrist baseline
+
+Set `RESIDUAL_MERGE_MODE=a2c2` to train the simplified feed-forward
+correction head. This mode removes the gate, contact head, GRU, conservative
+preserve losses, and Stage B labels from the objective. It supervises the raw
+current-step residual:
+
+```text
+delta_target = action_t - a_base_t
+loss = MSE(delta_pred, delta_target)
+```
+
+At inference it applies only the configured clipped residual:
+
+```text
+a_final = a_base + A2C2_ALPHA * clip(delta_pred)
+```
+
+The first intended A2C2-Wrist run should keep the frame-level v2 fast-cache and
+use a two-frame training window for previous-action conditioning:
+
+```bash
+RUN_NAME=hfrvla_a2c2_wrist_seq2 \
+WANDB_ENABLE=false \
+HFRVLA_DATASET_BACKEND=fastcache \
+HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_v2 \
+RESIDUAL_MERGE_MODE=a2c2 \
+A2C2_ALPHA=1.0 \
+A2C2_USE_LATENT_CONTEXT=true \
+SEQ_LEN=2 \
+BATCH_SIZE=256 \
+NUM_WORKERS=8 \
+STEPS=10000 \
+scripts/run_hfrvla_training_foreground.sh
+```
+
+For evaluation, package the checkpoint with
+`scripts/package_hfrvla_checkpoint.py` and sweep `A2C2_ALPHA` or
+`--policy.a2c2_alpha` over `0, 0.25, 0.5, 0.75, 1.0`.
+
+### HFRVLA LR/weight-decay W&B sweep
+
+Use this launcher to run the 20-run HFRVLA learning-rate and weight-decay
+matrix with W&B enabled:
+
+```bash
+scripts/run_hfrvla_lr_wd_sweep.sh
+```
+
+Default fixed settings:
+
+```text
+BATCH_SIZE=512
+STEPS=50000
+WARMUP_STEPS=1000
+JOINT_STEPS=49000
+REFINE_STEPS=0
+SAVE_FREQ=25000
+LOG_FREQ=100
+WANDB_ENABLE=true
+WANDB_PROJECT=hfrvla
+PARALLEL_JOBS=1
+```
+
+The sweep grid is:
+
+```text
+LR: 1e-5, 3e-5, 1e-4, 3e-4, 5e-4
+WD: 0, 1e-5, 1e-4, 3e-4
+```
+
+After the 2026-05-29 matched `plan=50`, `exec/replan=8` evaluation, the
+single-run default is `LR=3e-4` and `WEIGHT_DECAY=1e-5`.
+
+Run names use the `hfrvla_*` prefix, for example
+`hfrvla_lr3e_4_wd1e_5_b512_50k`. The script still sets
+`RESIDUAL_MERGE_MODE=a2c2` internally because that is the current code flag for
+the simplified HFRVLA correction module.
+
+Preview all commands without launching training:
+
+```bash
+DRY_RUN=true scripts/run_hfrvla_lr_wd_sweep.sh
+```
+
+Run two W&B jobs at a time when the GPU has headroom:
+
+```bash
+PARALLEL_JOBS=2 scripts/run_hfrvla_lr_wd_sweep.sh
+```
+
+Parallel runs write per-run console logs under
+`outputs/hfrvla_lr_wd_sweep_logs/<timestamp>/`. W&B still receives one run per
+hyperparameter row. Prefer `PARALLEL_JOBS=2` before increasing batch size: a
+2026-05-28 probe on this workstation measured roughly 17.7 step/s at batch 512,
+8.5 step/s at batch 1024, and 4-5 step/s at batch 2048, so larger batches did
+not improve samples/sec for the current small trainable module.
+
+Resume from a specific row after interruption:
+
+```bash
+START_AT=hfrvla_lr3e_4_wd1e_5_b512_50k scripts/run_hfrvla_lr_wd_sweep.sh
+```
+
+### Current A2C2 smoke, 10k, and alpha-sweep results
+
+Verified on 2026-05-25 with the rebuilt frame-level cache
+`checkpoints/HFRVLA_libero_v1_fastcache_v2`:
+
+| Check | Result |
+|---|---|
+| Train run | `hfrvla_a2c2_smoke_seq2_500_gpu`, 500 steps |
+| Throughput | 500 steps in 19 s; stable logs around 25-32 step/s |
+| VRAM | about 2.9 GiB during smoke training, below the 15 GiB budget |
+| Loss | `loss`/`delta` dropped from about 0.44 to 0.15 |
+| Checkpoint | `checkpoints/hfrvla_a2c2_smoke_seq2_500_gpu/checkpoints/000500/pretrained_model` |
+| Packaged eval artifact | `checkpoints/hfrvla_a2c2_smoke_seq2_500_gpu_packaged` |
+| Partial eval | `libero_spatial`, task 0, 1 episode, 0/1 success; `eval_info.json` and video were written |
+
+The 500-step eval is only a format/alignment smoke. It is not evidence of final
+policy quality.
+
+The first longer A2C2-Wrist run used the same frame-level cache, `seq_len=2`,
+`A2C2_ALPHA=1.0`, latent context enabled, batch size 256, and 8 dataloader
+workers:
+
+| Check | Result |
+|---|---|
+| Train run | `hfrvla_a2c2_wrist_seq2_10k`, 10000 steps |
+| Throughput | 10000 steps in 5 min 31 s; about 30.1 step/s average |
+| VRAM | about 2.9 GiB during training; formal CUDA eval stayed below the 15 GiB budget |
+| Loss | final logged `loss`/`delta` about 0.021 |
+| Packaged eval artifact | `checkpoints/hfrvla_a2c2_wrist_seq2_10k_packaged` |
+| Partial CUDA eval | `libero_spatial`, task 0, 1 episode, 1/1 success |
+| Full CUDA eval | `outputs/eval_a2c2_wrist_seq2_10k_spatial_cuda`, 26/50 success = 52.0%, 451.1 s total, 9.02 s/episode |
+| Per-task successes | task ids 0-9: `3, 4, 4, 4, 1, 0, 2, 4, 3, 1` out of 5 each |
+
+This 10k A2C2-Wrist result improves over the previously recorded frozen/zero
+fast baseline (`zero_fast`: 23/50 = 46.0%) and the earlier Stage A v2 residual
+result (24/50 = 48.0%). The gain is modest but useful as a first wrist-only
+correction baseline without GRU, gate, contact loss, or preserve-zero losses.
+
+The follow-up 20k and 30k runs used the same architecture, same frame-level
+fast-cache, `seq_len=2`, latent context enabled, batch size 256, 8 workers, and
+the same packaged CUDA eval protocol over all 10 `libero_spatial` tasks with 5
+episodes each. Training and eval both stayed under the requested 22000 MiB GPU
+limit: training polling was about 2.9 GiB, and eval polling peaked at about
+8.7 GiB.
+
+| Check | 20k | 30k |
+|---|---:|---:|
+| Train run | `hfrvla_a2c2_wrist_seq2_20k` | `hfrvla_a2c2_wrist_seq2_30k` |
+| Train time | about 10 min 44 s | about 16 min 18 s |
+| Final logged loss | about 0.020-0.021 | about 0.019 |
+| Packaged artifact | `checkpoints/hfrvla_a2c2_wrist_seq2_20k_packaged` | `checkpoints/hfrvla_a2c2_wrist_seq2_30k_packaged` |
+
+Full alpha sweep results, evaluated on 2026-05-26:
+
+| Checkpoint | Alpha | Success | Eval output | Per-task successes, task ids 0-9 |
+|---|---:|---:|---|---|
+| 20k | 0.00 | 23/50 = 46.0% | `outputs/eval_a2c2_wrist_seq2_20k_spatial_alpha_0_cuda` | `3, 2, 0, 3, 2, 0, 3, 3, 3, 4` |
+| 20k | 0.25 | 23/50 = 46.0% | `outputs/eval_a2c2_wrist_seq2_20k_spatial_alpha_025_cuda` | `3, 3, 2, 3, 1, 1, 4, 3, 1, 2` |
+| 20k | 0.50 | 22/50 = 44.0% | `outputs/eval_a2c2_wrist_seq2_20k_spatial_alpha_05_cuda` | `2, 3, 1, 3, 3, 0, 2, 4, 1, 3` |
+| 20k | 0.75 | 19/50 = 38.0% | `outputs/eval_a2c2_wrist_seq2_20k_spatial_alpha_075_cuda` | `1, 5, 1, 3, 2, 0, 2, 3, 2, 0` |
+| 20k | 1.00 | 15/50 = 30.0% | `outputs/eval_a2c2_wrist_seq2_20k_spatial_alpha_10_cuda` | `1, 4, 1, 1, 0, 0, 2, 3, 2, 1` |
+| 30k | 0.00 | 23/50 = 46.0% | `outputs/eval_a2c2_wrist_seq2_30k_spatial_alpha_0_cuda` | `3, 2, 0, 3, 2, 0, 3, 3, 3, 4` |
+| 30k | 0.25 | 23/50 = 46.0% | `outputs/eval_a2c2_wrist_seq2_30k_spatial_alpha_025_cuda` | `1, 4, 1, 3, 3, 0, 4, 4, 1, 2` |
+| 30k | 0.50 | 26/50 = 52.0% | `outputs/eval_a2c2_wrist_seq2_30k_spatial_alpha_05_cuda` | `3, 3, 1, 3, 3, 1, 3, 4, 2, 3` |
+| 30k | 0.75 | 25/50 = 50.0% | `outputs/eval_a2c2_wrist_seq2_30k_spatial_alpha_075_cuda` | `1, 5, 3, 3, 2, 1, 5, 4, 1, 0` |
+| 30k | 1.00 | 21/50 = 42.0% | `outputs/eval_a2c2_wrist_seq2_30k_spatial_alpha_10_cuda` | `2, 4, 2, 1, 2, 0, 2, 3, 2, 3` |
+
+Interpretation:
+
+- The current best in this sweep is 30k with `alpha=0.5`: 26/50 = 52.0%.
+- 20k did not improve over base-only; full-strength residual (`alpha=1.0`)
+  was harmful.
+- 30k learns a usable correction only at intermediate alpha. This suggests the
+  raw residual head is directionally useful but too large or too poorly
+  calibrated to deploy at full strength.
+- The simplest current thesis baseline remains defensible: frozen SmolVLA slow
+  planner plus wrist-only reactive correction, without gate, GRU, contact loss,
+  or preserve losses.
+
+Follow-up spatial+object eval on 2026-05-26:
+
+| Policy | Spatial | Object | Combined | Eval outputs |
+|---|---:|---:|---:|---|
+| HFRVLA 30k, `alpha=0.5` | 26/50 = 52.0% | 24/50 = 48.0% | 50/100 = 50.0% | `outputs/eval_a2c2_wrist_seq2_30k_spatial_alpha_05_cuda`, `outputs/eval_a2c2_wrist_seq2_30k_object_alpha_05_cuda` |
+| Original `HuggingFaceVLA/smolvla_libero` | 38/50 = 76.0% | 49/50 = 98.0% | 87/100 = 87.0% | `outputs/eval_smolvla_libero_spatial_5ep_cuda`, `outputs/eval_smolvla_libero_object_5ep_cuda` |
+
+Per-task successes:
+
+| Policy / suite | Task ids 0-9 |
+|---|---|
+| HFRVLA 30k `alpha=0.5`, spatial | `3, 3, 1, 3, 3, 1, 3, 4, 2, 3` |
+| HFRVLA 30k `alpha=0.5`, object | `1, 1, 3, 2, 3, 4, 0, 3, 5, 2` |
+| Original SmolVLA, spatial | `3, 4, 4, 3, 5, 2, 5, 5, 4, 3` |
+| Original SmolVLA, object | `5, 5, 5, 5, 5, 4, 5, 5, 5, 5` |
+
+The important diagnostic is that `alpha=0` in the HFRVLA package is not the
+same policy as default `HuggingFaceVLA/smolvla_libero`. The packaged HFRVLA
+config uses `n_action_steps=50`, so `select_action()` consumes a 50-step
+SmolVLA action chunk before replanning. The original `smolvla_libero` config
+uses `n_action_steps=1`, so it replans every environment step. This explains why
+the HFRVLA base-only rows are only 23/50 = 46.0% on spatial while original
+SmolVLA reaches 38/50 = 76.0% on the same 5-episode-per-task spatial protocol.
+That gap is not caused by the fast residual; it is the action-chunk execution
+regime the correction model is meant to improve.
+
+Follow-up matched-chunk eval on 2026-05-27:
+
+Both policies were evaluated with `--policy.n_action_steps=8` on the same
+seed-42 protocol, 10 tasks x 5 episodes for each suite. HFRVLA also used
+`--policy.a2c2_alpha=0.5`.
+
+| Policy | Spatial | Object | Combined | Eval outputs |
+|---|---:|---:|---:|---|
+| HFRVLA 30k, `alpha=0.5`, `n_action_steps=8` | 34/50 = 68.0% | 47/50 = 94.0% | 81/100 = 81.0% | `outputs/eval_hfrvla_a2c2_wrist_seq2_30k_n8_alpha_05_spatial_cuda`, `outputs/eval_hfrvla_a2c2_wrist_seq2_30k_n8_alpha_05_object_cuda` |
+| Original `HuggingFaceVLA/smolvla_libero`, `n_action_steps=8` | 32/50 = 64.0% | 45/50 = 90.0% | 77/100 = 77.0% | `outputs/eval_smolvla_libero_n8_spatial_cuda`, `outputs/eval_smolvla_libero_n8_object_cuda` |
+
+Per-task successes:
+
+| Policy / suite | Task ids 0-9 |
+|---|---|
+| HFRVLA 30k `alpha=0.5`, `n_action_steps=8`, spatial | `3, 4, 4, 4, 2, 3, 4, 4, 2, 4` |
+| HFRVLA 30k `alpha=0.5`, `n_action_steps=8`, object | `5, 5, 5, 4, 5, 4, 5, 4, 5, 5` |
+| SmolVLA `n_action_steps=8`, spatial | `3, 4, 4, 3, 4, 0, 4, 3, 3, 4` |
+| SmolVLA `n_action_steps=8`, object | `5, 5, 4, 5, 5, 3, 5, 5, 5, 3` |
+
+Interpretation: setting both policies to `n_action_steps=8` removes most of the
+previous comparison mismatch. Under this matched chunk-execution regime, HFRVLA
+is ahead of SmolVLA by 4/100 episodes overall, with gains on both spatial
+(+2/50) and object (+2/50). The stronger default SmolVLA result from
+2026-05-26 remains useful as an upper reference for every-step replanning
+(`n_action_steps=1`), but it is not the matched baseline for an 8-step action
+chunk experiment.
+
+Recommended architecture experiments after this baseline:
+
+1. **Temporal wrist visual pooling:** keep `seq_len=2` or test `seq_len=4`, but
+   explicitly feed previous/current wrist DINO patches into the A2C2-Wrist
+   module. The current implementation uses previous action context, not a true
+   previous-wrist visual context.
+2. **Alpha-calibrated residual objective:** keep the no-gate architecture, but
+   train/evaluate around the deployment scale that works (`alpha=0.5`) instead
+   of treating `alpha=1.0` as the default target.
+3. **Latent-context ablation:** run the same 30k recipe with
+   `A2C2_USE_LATENT_CONTEXT=false` to check whether `z_goal/z_phase` are helping
+   correction or adding noise.
+4. **Action-context ablation:** remove `prev_a_base` / `prev_delta` from the
+   fuser to measure whether the current previous-action conditioning is
+   responsible for the 30k gain.
+5. **Do not revive gate/GRU/contact as the next step:** the data now points to
+   calibration and temporal wrist evidence as the simpler unresolved variables.
+
+### Eval registry and chunk-size sweeps
+
+Long-term experiment comparison now lives in a repo-tracked registry instead of
+ad-hoc numbers copied from `outputs/`:
+
+```bash
+python3 scripts/build_eval_results_master.py
+python3 scripts/build_eval_results_master.py --check
+```
+
+Registry files:
+
+- `experiments/eval_registry/sources.csv`: manifest that records each source
+  CSV, sweep id, policy, metadata profile, tags, and notes.
+- `experiments/eval_registry/eval_results_master.csv`: regenerated compact
+  long/tidy master table. Do not edit this file by hand.
+
+The first master table combines:
+
+- `outputs/action_steps_eval_sweep/results.csv` (`30` rows): planning chunk is
+  fixed at the checkpoint value (`planning_chunk_size=50`) and only
+  execution/replan interval changes.
+- `outputs/chunk_size_eval_sweep/results.csv` (`36` rows): planning chunk,
+  execution chunk, and replan interval are all set to the same value `K`.
+
+Current combined results, spatial + object, seed 42, 10 tasks x 5 episodes per
+suite:
+
+| Sweep | Policy | Planning | Execution / replan | Combined |
+|---|---|---:|---:|---:|
+| action-step | HFRVLA 30k `alpha=0.5` | 50 | 2 | 85/100 = 85.0% |
+| action-step | SmolVLA | 50 | 2 | 82/100 = 82.0% |
+| action-step | HFRVLA 30k `alpha=0.5` | 50 | 8 | 81/100 = 81.0% |
+| action-step | SmolVLA | 50 | 8 | 77/100 = 77.0% |
+| matched chunk | HFRVLA 30k `alpha=0.5` | 8 | 8 | 83/100 = 83.0% |
+| matched chunk | SmolVLA | 4 | 4 | 79/100 = 79.0% |
+| matched chunk | HFRVLA 30k `alpha=0.5` | 50 | 50 | 46/100 = 46.0% |
+| matched chunk | SmolVLA | 50 | 50 | 43/100 = 43.0% |
+
+Interpretation for paper writing:
+
+1. Always distinguish `planning_chunk_size` from
+   `execution_chunk_size` / `replan_interval_steps`.
+2. The action-step sweep asks how often a 50-step planned chunk should be
+   interrupted by replanning.
+3. The chunk-size sweep asks what happens when the policy plans and executes
+   shorter or longer chunks end-to-end.
+4. Long chunks (`K=50`) are a failure mode for both policies under the matched
+   planning/execution protocol.
+5. Any future training-parameter experiment should add rows to
+   `experiments/eval_registry/sources.csv`, then regenerate the master CSV.
+
+If `scripts/package_hfrvla_checkpoint.py` is run in a sandbox where CUDA is not
+visible, the saved packaged config can contain `"device": "cpu"`. For formal GPU
+eval, pass `--policy.device=cuda` to `lerobot-eval` or repackage in an
+environment where CUDA is visible.
+
+### Legacy gated residual objective knobs
 
 The fast module is trained against the same action form used at deployment:
 `a_final = a_base + gate * clip(delta_a)`. Do not train the residual head to
@@ -511,6 +823,10 @@ did not match the clipped/gated action actually sent to LIBERO.
 | `--policy.loss_lambda_gate_prior` | `0.10` | Stage A rate term on mean gate. |
 | `--policy.loss_lambda_preserve_zero` | `1.0` | Stage A zero-target penalty on frames with `err_before < err_preserve_thresh`. |
 | `--policy.err_preserve_thresh` | `0.5` | Stage A preserve threshold in summed-squared action error units. |
+
+These knobs are retained for the legacy `RESIDUAL_MERGE_MODE=gated` path. They
+are not used by the current `RESIDUAL_MERGE_MODE=a2c2` smoke path, whose loss is
+only the raw current-step residual MSE.
 
 Stage B replaces the Stage A loss with the five-term rate-distortion objective
 from `docs/hfrvla_objective_debate_20260521.md`: `correct`, `preserve_zero`,
@@ -532,9 +848,10 @@ is easier to audit:
 
 - `Training I/O`: separates fast-module inputs from expert-only supervision
   targets.
-- `Fast module outputs`: shows `delta_a`, `gate`, `contact_logit`, and the
-  `a_final = a_base + gate * clip(delta_a)` merge.
-- `Learning objective`: maps each loss term to its target and training role.
+- `Fast module outputs`: shows the current A2C2-Wrist `delta_a` output and the
+  `a_final = a_base + alpha * clip(delta_a)` merge.
+- `Learning objective`: distinguishes the current raw residual MSE from the
+  legacy gated losses.
 
 ### Output structure
 
@@ -578,6 +895,7 @@ TMPDIR=$HFRVLA_TMP_ROOT/tmp \
 MPLCONFIGDIR=$HFRVLA_TMP_ROOT/matplotlib \
 ~/Robotic_infra/lerobot/.venv/bin/lerobot-eval \
     --policy.path=checkpoints/hfrvla_run01_packaged \
+    --policy.device=cuda \
     --env.type=libero \
     --env.task=libero_spatial \
     --env.task_ids='[0]' \
@@ -599,6 +917,7 @@ for SUITE in libero_spatial libero_object libero_goal libero_10 libero_90; do
   MPLCONFIGDIR=$HFRVLA_TMP_ROOT/matplotlib \
   ~/Robotic_infra/lerobot/.venv/bin/lerobot-eval \
       --policy.path=checkpoints/hfrvla_run01_packaged \
+      --policy.device=cuda \
       --env.type=libero \
       --env.task=$SUITE \
       --eval.n_episodes=20 \
@@ -657,7 +976,7 @@ RUN_NAME=hfrvla_short_seq4 \
 WANDB_ENABLE=false \
 HFRVLA_TMP_ROOT=$HOME/tmp/hfrvla \
 HFRVLA_DATASET_BACKEND=fastcache \
-HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4_v2 \
+HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_v2 \
 BATCH_SIZE=128 \
 NUM_WORKERS=8 \
 SEQ_LEN=4 \
