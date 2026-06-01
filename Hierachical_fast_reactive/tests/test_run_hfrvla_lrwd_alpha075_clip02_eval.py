@@ -104,7 +104,8 @@ def test_eval_spec_sets_alpha_clip_safety_and_n8(tmp_path) -> None:
     assert spec.eval_control_dt == 0.1
     assert spec.n_action_steps == 8
     assert spec.planning_chunk_size == 50
-    assert "--policy.a2c2_alpha=0.75" in cmd
+    assert "--policy.fast_residual_alpha=0.75" in cmd
+    assert not any(part.startswith("--policy.a2c2_alpha=") for part in cmd)
     assert "--policy.delta_max=0.2" in cmd
     assert "--policy.safety_joint_velocity_limit=2.0" in cmd
     assert "--policy.control_dt=0.1" in cmd

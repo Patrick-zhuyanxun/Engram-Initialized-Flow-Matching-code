@@ -1,0 +1,25 @@
+{
+  "name": "hfrvla-training-docs-hook",
+  "version": "0.1.0",
+  "description": "Keeps the HFRVLA training HTML presentation synchronized with docs/training.md.",
+  "author": {
+    "name": "HFRVLA local workspace"
+  },
+  "keywords": [
+    "hfrvla",
+    "training-docs",
+    "hooks"
+  ],
+  "hooks": "./hooks.json",
+  "interface": {
+    "displayName": "HFRVLA Training Docs Hook",
+    "shortDescription": "Syncs docs/training_presentation.html after Codex edits training.md.",
+    "longDescription": "Runs the local presentation generator after Codex file edits when docs/training.md or the generator is newer than the HTML output.",
+    "developerName": "HFRVLA local workspace",
+    "category": "Productivity",
+    "capabilities": [
+      "Write"
+    ],
+    "brandColor": "#34D399"
+  }
+}

@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>HFRVLA — Architecture Walkthrough</title>
+<style>
+  :root {
+    --bg: #f5faff;
+    --paper: #ffffff;
+    --ink: #1e1e1e;
+    --muted: #6b7280;
+    --slow: #1971c2;      /* System 2 — blue */
+    --fast: #2f9e44;      /* System 1 — green */
+    --residual: #ea580c;  /* residual orange */
+    --gate: #9333ea;      /* gate purple */
+    --warn: #dc2626;
+    --highlight: #fef3c7;
+    --slow-bg: #e7f5ff;
+    --fast-bg: #ebfbee;
+    --merge-bg: #fff4e6;
+    --latent-bg: #f3e8ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Nunito', 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.6;
+  }
+
+  /* ─── Header ─── */
+  header {
+    background: linear-gradient(135deg, #1a365d 0%, #1971c2 60%, #2f9e44 100%);
+    color: #fff;
+    padding: 48px 24px 40px;
+    text-align: center;
+  }
+  header .tag {
+    display: inline-block;
+    background: rgba(255,255,255,.18);
+    border: 1px solid rgba(255,255,255,.4);
+    border-radius: 20px;
+    font-size: 12px; letter-spacing: .12em;
+    padding: 4px 14px; margin-bottom: 18px;
+    text-transform: uppercase; font-weight: 600;
+  }
+  header h1 { font-size: 2rem; font-weight: 800; margin-bottom: 10px; }
+  header h2 { font-size: 1rem; font-weight: 400; opacity: .9; max-width: 720px; margin: 0 auto; }
+
+  main { max-width: 1280px; margin: 0 auto; padding: 36px 24px 80px; }
+  section { margin-bottom: 48px; }
+  h3 {
+    font-size: 1.3rem; font-weight: 800;
+    border-left: 5px solid var(--slow);
+    padding-left: 14px; margin-bottom: 18px;
+  }
+  h4 { font-size: 1rem; font-weight: 700; margin: 12px 0 6px; }
+
+  /* ─── Motivation panel ─── */
+  .motivation {
+    background: var(--paper);
+    border: 2px solid var(--warn);
+    border-radius: 12px;
+    padding: 22px 26px;
+    margin-bottom: 18px;
+  }
+  .motivation .label {
+    display: inline-block;
+    background: var(--warn); color: #fff;
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: .7rem; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .1em;
+    margin-bottom: 8px;
+  }
+  .motivation p { font-size: .95rem; color: #4b5563; }
+
+  /* ─── Grid panels ─── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--paper);
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 22px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .panel-slow { border-top: 4px solid var(--slow); }
+  .panel-fast { border-top: 4px solid var(--fast); }
+
+  /* ─── Diagram container ─── */
+  .diagram-wrap {
+    background: var(--paper);
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 30px 16px;
+    overflow-x: auto;
+    box-shadow: 0 2px 6px rgba(0,0,0,.05);
+  }
+  svg text {
+    font-family: 'Nunito', 'Segoe UI', sans-serif;
+    font-weight: 600;
+  }
+
+  /* ─── Tensor spec table ─── */
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; margin-top: 8px; }
+  thead th {
+    background: #1f2937; color: #fff;
+    text-align: left; padding: 8px 12px; font-weight: 700;
+  }
+  tbody tr:nth-child(even) { background: #f9fafb; }
+  tbody td { padding: 7px 12px; border-bottom: 1px solid #e5e7eb; font-family: 'Courier New', monospace; }
+  tbody td:first-child { font-family: inherit; font-weight: 600; }
+
+  /* ─── Equation block ─── */
+  .equation {
+    background: #f1f5f9;
+    border-left: 4px solid var(--gate);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 20px;
+    font-family: 'Courier New', monospace;
+    font-size: .92rem;
+    margin: 10px 0;
+    color: #1e1b4b;
+    white-space: pre-wrap;
+  }
+
+  /* ─── Badges ─── */
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .badge {
+    display: inline-block; border-radius: 20px;
+    font-size: .76rem; padding: 3px 12px; font-weight: 700;
+  }
+  .badge-slow   { background: #dbeafe; color: #1d4ed8; }
+  .badge-fast   { background: #dcfce7; color: #166534; }
+  .badge-warn   { background: #fee2e2; color: #991b1b; }
+  .badge-gate   { background: #ede9fe; color: #6b21a8; }
+
+  /* ─── Timing diagram bars ─── */
+  .timing-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+  .timing-label { width: 130px; font-size: .85rem; font-weight: 700; }
+  .timing-bar { flex: 1; height: 28px; background: #f3f4f6; border-radius: 4px; position: relative; overflow: hidden; border: 1px solid #e5e7eb;}
+  .tick-slow {
+    position: absolute; top: 0; bottom: 0;
+    background: var(--slow); width: 4px;
+  }
+  .tick-fast {
+    position: absolute; top: 0; bottom: 0;
+    background: var(--fast); width: 2px;
+  }
+  .tick-label {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    font-size: .68rem; color: #fff;
+    padding-left: 6px; pointer-events: none;
+  }
+
+  /* ─── Training schematic ─── */
+  .loss-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 10px;
+  }
+  .loss-card-delta   { border-left: 4px solid var(--residual); }
+  .loss-card-gate    { border-left: 4px solid var(--gate); }
+  .loss-card-contact { border-left: 4px solid #9ca3af; }
+
+  /* ─── Footer ─── */
+  footer {
+    text-align: center; padding: 28px;
+    font-size: .8rem; color: var(--muted);
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .num-callout {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--slow); color: #fff;
+    font-size: .8rem; font-weight: 800;
+    margin-right: 8px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="tag">Architecture Walkthrough · IROS / ICRA Draft</div>
+  <h1>HFRVLA — Hierarchical Fast-Reactive VLA</h1>
+  <h2>A high-frequency wrist-camera correction module that closes the loop while the slow VLA thinks.</h2>
+</header>
+
+<main>
+
+<!-- ═══════════ 0. MOTIVATION ═══════════ -->
+<section>
+  <h3 style="border-left-color: var(--warn);">0 ·  The Problem We Solve</h3>
+  <div class="motivation">
+    <div class="label">Core pain point</div>
+    <p>
+      VLA models (SmolVLA, OpenVLA, π0) are powerful but <strong>too slow</strong> for closed-loop control.
+      On consumer GPUs, a single chunk inference costs ≈ <strong>100 ms+</strong>. During the open-loop
+      execution of each chunk (~0.5 s), the arm is blind to perturbations — object shifts, contact transitions,
+      and execution drift accumulate into failures.
+    </p>
+    <p style="margin-top:6px;">
+      <strong>Question</strong>: Can we add a <em>tiny</em> module that runs at every control step,
+      uses only the wrist camera (no force/tactile), and decides when to correct the slow VLA's plan —
+      <em>without retraining the slow VLA</em>?
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════ 1. SYSTEM OVERVIEW ═══════════ -->
+<section>
+  <h3>1 ·  Two Loops, Two Frequencies</h3>
+
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 1200 720" width="100%" style="min-width:1000px;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Background lanes -->
+      <rect x="20" y="20" width="1160" height="280" rx="14" fill="#e7f5ff" stroke="#1971c2" stroke-width="2"/>
+      <rect x="20" y="320" width="1160" height="280" rx="14" fill="#ebfbee" stroke="#2f9e44" stroke-width="2"/>
+      <rect x="20" y="620" width="1160" height="80" rx="14" fill="#fff4e6" stroke="#ea580c" stroke-width="2"/>
+
+      <!-- Lane labels -->
+      <text x="40" y="48" font-size="14" font-weight="800" fill="#1971c2">SYSTEM 2 — SLOW (~10 Hz, chunk-level)</text>
+      <text x="40" y="348" font-size="14" font-weight="800" fill="#2f9e44">SYSTEM 1 — FAST (every step, 20–60 Hz)</text>
+      <text x="40" y="648" font-size="14" font-weight="800" fill="#ea580c">COUPLING — safety-aware action merge</text>
+
+      <!-- ─── System 2 boxes ─── -->
+      <!-- Inputs cluster -->
+      <g>
+        <rect x="50" y="65" width="125" height="200" rx="10" fill="#dbeafe" stroke="#1971c2" stroke-width="1.5"/>
+        <text x="112" y="86" text-anchor="middle" font-size="11" font-weight="800" fill="#1e3a8a">SYSTEM 2 INPUTS</text>
+        <text x="60" y="112" font-size="10" fill="#1e40af">📷  Top view (RGB)</text>
+        <text x="60" y="132" font-size="10" fill="#1e40af">📷  Wrist view (RGB)</text>
+        <text x="60" y="152" font-size="10" fill="#1e40af">💬  Language instr.</text>
+        <text x="60" y="172" font-size="10" fill="#1e40af">🦾  Robot state s_t</text>
+        <text x="60" y="212" font-size="9" fill="#475569">Frequency:</text>
+        <text x="60" y="226" font-size="9" font-weight="700" fill="#1971c2">once per chunk</text>
+        <text x="60" y="246" font-size="9" fill="#475569">≈ every 100 ms+</text>
+      </g>
+
+      <!-- Arrow inputs → SmolVLA -->
+      <line x1="175" y1="160" x2="222" y2="160" stroke="#1971c2" stroke-width="2.5" marker-end="url(#arr-blue)"/>
+
+      <!-- SmolVLA box -->
+      <g>
+        <rect x="225" y="65" width="180" height="200" rx="10" fill="#1971c2" stroke="#0c4a6e" stroke-width="2"/>
+        <text x="315" y="92" text-anchor="middle" font-size="14" font-weight="800" fill="white">SmolVLA</text>
+        <text x="315" y="112" text-anchor="middle" font-size="10" fill="#cfe8ff">(VLM + Action Expert)</text>
+        <text x="315" y="135" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">FROZEN ❄️</text>
+        <text x="315" y="152" text-anchor="middle" font-size="9" fill="#cfe8ff">no retraining</text>
+        <line x1="245" y1="170" x2="385" y2="170" stroke="#bfdbfe" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="315" y="188" text-anchor="middle" font-size="9" fill="#cfe8ff">Forward-hook taps:</text>
+        <text x="315" y="206" text-anchor="middle" font-size="10" font-weight="700" fill="#a7f3d0">  z_goal  (256)</text>
+        <text x="315" y="222" text-anchor="middle" font-size="10" font-weight="700" fill="#a7f3d0">  z_phase (256)</text>
+        <text x="315" y="248" text-anchor="middle" font-size="9" fill="#cfe8ff">450 M params, ~100 ms/call</text>
+      </g>
+
+      <!-- Arrow SmolVLA → A_t -->
+      <line x1="405" y1="160" x2="460" y2="160" stroke="#1971c2" stroke-width="2.5" marker-end="url(#arr-blue)"/>
+
+      <!-- A_t chunk box -->
+      <g>
+        <rect x="465" y="100" width="150" height="120" rx="10" fill="#bfdbfe" stroke="#1971c2" stroke-width="1.5"/>
+        <text x="540" y="125" text-anchor="middle" font-size="13" font-weight="800" fill="#1e3a8a">Action Chunk</text>
+        <text x="540" y="146" text-anchor="middle" font-size="13" font-weight="800" fill="#1e3a8a">A_t</text>
+        <text x="540" y="170" text-anchor="middle" font-size="10" fill="#1e3a8a">[a_t, a_{t+1}, …, a_{t+H}]</text>
+        <text x="540" y="188" text-anchor="middle" font-size="10" fill="#1e3a8a">H = 10 steps × 7 DoF</text>
+        <text x="540" y="208" text-anchor="middle" font-size="9" fill="#475569">popped step-by-step</text>
+      </g>
+
+      <!-- ─── Latent flow z_goal / z_phase down to S1 ─── -->
+      <g>
+        <path d="M 315 264 L 315 305 L 460 305 L 460 360" fill="none" stroke="#9333ea" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arr-purple)"/>
+        <rect x="335" y="285" width="100" height="22" rx="6" fill="#f3e8ff" stroke="#9333ea" stroke-width="1"/>
+        <text x="385" y="300" text-anchor="middle" font-size="9" font-weight="700" fill="#6b21a8">z_goal · z_phase</text>
+      </g>
+
+      <!-- A_t → coupling -->
+      <g>
+        <path d="M 540 220 L 540 295 L 800 295 L 800 360 L 730 360" fill="none" stroke="#1971c2" stroke-width="2.5" stroke-dasharray="2,2"/>
+        <text x="720" y="290" font-size="9" font-weight="700" fill="#1971c2">a_base[k]  → System 1</text>
+      </g>
+
+      <!-- A_t → merge (down) -->
+      <path d="M 615 160 L 870 160 L 870 660 L 770 660" fill="none" stroke="#1971c2" stroke-width="2.5" marker-end="url(#arr-blue)"/>
+      <text x="880" y="155" font-size="10" font-weight="700" fill="#1971c2">A_t</text>
+
+      <!-- ─── System 1 boxes ─── -->
+      <!-- Wrist inputs S1 -->
+      <g>
+        <rect x="50" y="370" width="125" height="200" rx="10" fill="#dcfce7" stroke="#2f9e44" stroke-width="1.5"/>
+        <text x="112" y="391" text-anchor="middle" font-size="11" font-weight="800" fill="#14532d">SYSTEM 1 INPUTS</text>
+        <text x="60" y="417" font-size="10" fill="#15803d">📷  Wrist RGB (only)</text>
+        <text x="60" y="435" font-size="10" fill="#15803d">🦾  proprio s_t</text>
+        <text x="60" y="453" font-size="10" fill="#15803d">▸  a_base[k] (from S2)</text>
+        <text x="60" y="471" font-size="10" fill="#15803d">▸  k_idx / H</text>
+        <text x="60" y="489" font-size="10" fill="#15803d">▸  z_goal, z_phase</text>
+        <text x="60" y="515" font-size="9" fill="#475569">Frequency:</text>
+        <text x="60" y="529" font-size="9" font-weight="700" fill="#2f9e44">every control step</text>
+        <text x="60" y="549" font-size="9" fill="#475569">20–60 Hz</text>
+      </g>
+
+      <!-- Arrow inputs → DINO -->
+      <line x1="175" y1="470" x2="222" y2="470" stroke="#2f9e44" stroke-width="2.5" marker-end="url(#arr-green)"/>
+
+      <!-- DINOv2 backbone -->
+      <g>
+        <rect x="225" y="395" width="140" height="160" rx="10" fill="#a7f3d0" stroke="#15803d" stroke-width="1.5"/>
+        <text x="295" y="418" text-anchor="middle" font-size="12" font-weight="800" fill="#064e3b">DINOv2-Small</text>
+        <text x="295" y="436" text-anchor="middle" font-size="10" fill="#065f46">FROZEN ❄️</text>
+        <text x="295" y="458" text-anchor="middle" font-size="10" font-weight="700" fill="#064e3b">wrist 224×224</text>
+        <text x="295" y="475" text-anchor="middle" font-size="10" fill="#065f46">↓</text>
+        <text x="295" y="492" text-anchor="middle" font-size="10" font-weight="700" fill="#064e3b">196 patches × 384-d</text>
+        <text x="295" y="515" text-anchor="middle" font-size="9" fill="#475569">~6 ms / frame</text>
+        <text x="295" y="540" text-anchor="middle" font-size="9" fill="#475569">(precomputable offline)</text>
+      </g>
+
+      <!-- Arrow DINO → cross-attn -->
+      <line x1="365" y1="475" x2="412" y2="475" stroke="#2f9e44" stroke-width="2.5" marker-end="url(#arr-green)"/>
+
+      <!-- Cross-attention pool (S-B) -->
+      <g>
+        <rect x="415" y="395" width="140" height="160" rx="10" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.5"/>
+        <text x="485" y="418" text-anchor="middle" font-size="11" font-weight="800" fill="#713f12">Cross-Attn Pool</text>
+        <text x="485" y="434" text-anchor="middle" font-size="9" fill="#854d0e">(Strategy S-B)</text>
+        <text x="485" y="458" text-anchor="middle" font-size="10" fill="#713f12">Q = MLP(z_goal,</text>
+        <text x="485" y="473" text-anchor="middle" font-size="10" fill="#713f12">        z_phase)</text>
+        <text x="485" y="488" text-anchor="middle" font-size="10" fill="#713f12">K, V = patches</text>
+        <text x="485" y="510" text-anchor="middle" font-size="10" font-weight="700" fill="#713f12">→ 256-d task-pooled</text>
+        <text x="485" y="535" text-anchor="middle" font-size="9" fill="#475569">~0.5 ms</text>
+      </g>
+
+      <!-- Arrow cross-attn → GRU -->
+      <line x1="555" y1="475" x2="602" y2="475" stroke="#2f9e44" stroke-width="2.5" marker-end="url(#arr-green)"/>
+
+      <!-- GRU + heads -->
+      <g>
+        <rect x="605" y="395" width="155" height="160" rx="10" fill="#2f9e44" stroke="#14532d" stroke-width="2"/>
+        <text x="682" y="418" text-anchor="middle" font-size="12" font-weight="800" fill="white">GRU(256)</text>
+        <text x="682" y="434" text-anchor="middle" font-size="9" fill="#bbf7d0">+ proprio · a_base · k</text>
+        <text x="682" y="450" text-anchor="middle" font-size="9" font-weight="700" fill="white">TRAINABLE 🔥</text>
+        <line x1="615" y1="460" x2="755" y2="460" stroke="#bbf7d0" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="682" y="480" text-anchor="middle" font-size="10" font-weight="700" fill="white">3 heads (MLP):</text>
+        <text x="682" y="498" text-anchor="middle" font-size="10" fill="#fde68a">▸ δa  (7-d)</text>
+        <text x="682" y="514" text-anchor="middle" font-size="10" fill="#e9d5ff">▸ g   (gate ∈ [0,1])</text>
+        <text x="682" y="530" text-anchor="middle" font-size="10" fill="#fecaca">▸ c   (contact aux)</text>
+        <text x="682" y="548" text-anchor="middle" font-size="9" fill="#bbf7d0">&lt; 10 M params total</text>
+      </g>
+
+      <!-- ─── 3 output arrows ─── -->
+      <!-- δa -->
+      <line x1="760" y1="490" x2="820" y2="640" stroke="#ea580c" stroke-width="2.5" marker-end="url(#arr-orange)"/>
+      <text x="775" y="540" font-size="11" font-weight="800" fill="#ea580c">δa</text>
+      <!-- gate -->
+      <line x1="760" y1="475" x2="730" y2="640" stroke="#9333ea" stroke-width="2.5" marker-end="url(#arr-purple)"/>
+      <text x="710" y="555" font-size="11" font-weight="800" fill="#9333ea">g</text>
+      <!-- contact (training only) -->
+      <line x1="765" y1="525" x2="900" y2="560" stroke="#9ca3af" stroke-width="2" stroke-dasharray="4,3"/>
+      <text x="870" y="535" font-size="9" fill="#6b7280" font-style="italic">c (training only)</text>
+
+      <!-- ─── Coupling box ─── -->
+      <g>
+        <rect x="685" y="635" width="280" height="60" rx="10" fill="#ea580c" stroke="#9a3412" stroke-width="2"/>
+        <text x="825" y="657" text-anchor="middle" font-size="11" font-weight="800" fill="white">Coupling + Safety</text>
+        <text x="825" y="678" text-anchor="middle" font-size="11" font-weight="700" fill="white">a_final = SafetyLayer(a_base + g · clip(δa))</text>
+      </g>
+
+      <!-- Robot controller -->
+      <g>
+        <rect x="985" y="635" width="175" height="60" rx="10" fill="#4c1d95" stroke="#312e81" stroke-width="2"/>
+        <text x="1072" y="657" text-anchor="middle" font-size="12" font-weight="800" fill="white">🤖 Robot Controller</text>
+        <text x="1072" y="678" text-anchor="middle" font-size="10" fill="#ddd6fe">execute a_final[t]</text>
+      </g>
+
+      <!-- coupling → robot -->
+      <line x1="965" y1="665" x2="983" y2="665" stroke="#1e1e1e" stroke-width="2.5" marker-end="url(#arr-black)"/>
+
+      <!-- feedback wrist camera (close loop) -->
+      <path d="M 1072 695 L 1072 715 L 112 715 L 112 575" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6,4" marker-end="url(#arr-gray)"/>
+      <text x="600" y="710" text-anchor="middle" font-size="10" fill="#64748b" font-style="italic">wrist camera feedback every step</text>
+
+      <!-- Arrow definitions -->
+      <defs>
+        <marker id="arr-blue"   markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto"><polygon points="0 0,10 4,0 8" fill="#1971c2"/></marker>
+        <marker id="arr-green"  markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto"><polygon points="0 0,10 4,0 8" fill="#2f9e44"/></marker>
+        <marker id="arr-orange" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto"><polygon points="0 0,10 4,0 8" fill="#ea580c"/></marker>
+        <marker id="arr-purple" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto"><polygon points="0 0,10 4,0 8" fill="#9333ea"/></marker>
+        <marker id="arr-black"  markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto"><polygon points="0 0,10 4,0 8" fill="#1e1e1e"/></marker>
+        <marker id="arr-gray"   markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto"><polygon points="0 0,10 4,0 8" fill="#94a3b8"/></marker>
+      </defs>
+    </svg>
+  </div>
+</section>
+
+<!-- ═══════════ 2. TIMING DIAGRAM ═══════════ -->
+<section>
+  <h3 style="border-left-color: var(--fast);">2 ·  Why "Fast" Matters — Timing Diagram</h3>
+
+  <div class="panel">
+    <p style="margin-bottom: 14px; font-size: .92rem;">
+      The slow VLA fires once per chunk (≈ every 0.5 s). The fast module fires every step.
+      During the open-loop chunk window, only HFRVLA can react to perturbations.
+    </p>
+
+    <div class="timing-row">
+      <div class="timing-label" style="color:var(--slow);">System 2 (SmolVLA)</div>
+      <div class="timing-bar">
+        <div class="tick-slow" style="left:1%"><div class="tick-label">A_0</div></div>
+        <div class="tick-slow" style="left:20%"><div class="tick-label">A_1</div></div>
+        <div class="tick-slow" style="left:40%"><div class="tick-label">A_2</div></div>
+        <div class="tick-slow" style="left:60%"><div class="tick-label">A_3</div></div>
+        <div class="tick-slow" style="left:80%"><div class="tick-label">A_4</div></div>
+      </div>
+    </div>
+
+    <div class="timing-row">
+      <div class="timing-label" style="color:var(--fast);">System 1 (Fast)</div>
+      <div class="timing-bar" id="fast-bar">
+        <!-- ticks drawn via inline style -->
+      </div>
+    </div>
+
+    <div class="timing-row">
+      <div class="timing-label" style="color:#6b7280;">Time →</div>
+      <div class="timing-bar" style="background: transparent; border: none; position: relative;">
+        <span style="position:absolute; left:0; font-size:.7rem;">0 ms</span>
+        <span style="position:absolute; left:20%; font-size:.7rem;">100 ms</span>
+        <span style="position:absolute; left:40%; font-size:.7rem;">200 ms</span>
+        <span style="position:absolute; left:60%; font-size:.7rem;">300 ms</span>
+        <span style="position:absolute; left:80%; font-size:.7rem;">400 ms</span>
+        <span style="position:absolute; right:0; font-size:.7rem;">500 ms</span>
+      </div>
+    </div>
+
+    <div class="badges" style="margin-top: 14px;">
+      <span class="badge badge-slow">System 2: 1 fire / 100 ms</span>
+      <span class="badge badge-fast">System 1: 1 fire / 20 ms</span>
+      <span class="badge badge-warn">Without S1: 80 ms blind window per chunk</span>
+    </div>
+  </div>
+
+  <script>
+    // draw fast ticks every 2% (= every 10ms in 500ms window)
+    const bar = document.getElementById('fast-bar');
+    for (let i = 0; i < 50; i++) {
+      const tick = document.createElement('div');
+      tick.className = 'tick-fast';
+      tick.style.left = (i * 2) + '%';
+      bar.appendChild(tick);
+    }
+  </script>
+</section>
+
+<!-- ═══════════ 3. EXACT I/O SPEC ═══════════ -->
+<section>
+  <h3 style="border-left-color: var(--fast);">3 ·  Module I/O Specification</h3>
+
+  <div class="grid-2">
+    <div class="panel panel-fast">
+      <h4>📥 System 1 Inputs (per step)</h4>
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Shape</th><th>Source</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>wrist_rgb</td><td>(3, 224, 224)</td><td>camera</td></tr>
+          <tr><td>proprio</td><td>(14,)</td><td>joint pos+vel</td></tr>
+          <tr><td>a_base_k</td><td>(7,)</td><td>A_t[k]</td></tr>
+          <tr><td>k_idx_norm</td><td>(1,)</td><td>k/H ∈ [0,1]</td></tr>
+          <tr><td>z_goal</td><td>(256,)</td><td>SmolVLA hook (detach)</td></tr>
+          <tr><td>z_phase</td><td>(256,)</td><td>SmolVLA hook (detach)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel panel-fast">
+      <h4>📤 System 1 Outputs (per step)</h4>
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Shape</th><th>Activation</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>δa</td><td>(7,)</td><td>linear</td></tr>
+          <tr><td>g (gate)</td><td>(,)</td><td>sigmoid</td></tr>
+          <tr><td>c (contact, training only)</td><td>(,)</td><td>sigmoid</td></tr>
+        </tbody>
+      </table>
+      <div class="badges">
+        <span class="badge badge-fast">&lt; 10 M trainable params</span>
+        <span class="badge badge-gate">target latency &lt; 15 ms / step</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ 4. ACTION MERGING ═══════════ -->
+<section>
+  <h3 style="border-left-color: var(--residual);">4 ·  Action Merging — Where Two Loops Meet</h3>
+
+  <div class="panel">
+    <div class="equation">δa_clip = clamp(δa, −δ_max, +δ_max)
+a_cand   = a_base + g · δa_clip
+a_final  = enforce_joint_velocity_limit(a_cand, prev_a, dt)
+                                                       └─ safety layer</div>
+
+    <div class="grid-2" style="margin-top: 16px;">
+      <div>
+        <h4>Why a learned gate <span style="color:var(--gate);">g</span>?</h4>
+        <p style="font-size: .9rem;">
+          Hard clipping treats every step identically. The gate <strong>g_t ∈ [0, 1]</strong> learns
+          <em>when</em> correction is helpful — high during contact / alignment, low during stable transport.
+        </p>
+        <div class="badges">
+          <span class="badge badge-gate">supervised via G-C signal</span>
+        </div>
+      </div>
+      <div>
+        <h4>Why "frozen" + "residual"?</h4>
+        <p style="font-size: .9rem;">
+          SmolVLA stays untouched — its broad task knowledge is preserved.
+          Only the small fast module is trained, on top of a base policy that already works.
+          The gate then prevents over-correction on tasks the base policy handles well.
+        </p>
+        <div class="badges">
+          <span class="badge badge-slow">no SmolVLA retraining</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ 5. TRAINING ═══════════ -->
+<section>
+  <h3 style="border-left-color: var(--gate);">5 ·  Training Signal — Three Losses</h3>
+
+  <div class="loss-card loss-card-delta">
+    <h4>L_delta — supervise the residual</h4>
+    <div class="equation">L_delta = || δa  −  (a_expert − a_base) ||²</div>
+    <p style="font-size: .9rem; color: #4b5563;">Offline: run frozen SmolVLA over each LIBERO demo to get a_base per step; expert gives a_expert.</p>
+  </div>
+
+  <div class="loss-card loss-card-gate">
+    <h4>L_gate — supervise the gate (G-C: prediction improvement, stop-gradient on δa)</h4>
+    <div class="equation">δ̄a = stop_grad(δa)
+g*  = sigmoid( || a_expert − a_base ||²  −  || a_expert − (a_base + δ̄a) ||² )
+                  ↑ "if adding δa actively reduces error, gate = 1"
+L_gate = BCE( g, g* )</div>
+    <p style="font-size: .9rem; color: #4b5563;">Stop-gradient breaks the chicken-and-egg coupling. Gate becomes a <em>trust estimator</em>, not a magnitude detector.</p>
+  </div>
+
+  <div class="loss-card loss-card-contact">
+    <h4>L_contact — auxiliary contact-event head (training only)</h4>
+    <div class="equation">L_contact = BCE( c, contact_label )</div>
+    <p style="font-size: .9rem; color: #4b5563;">LIBERO: from MuJoCo contact tensor. Real robot: from joint torque heuristic. <strong>Dropped at inference.</strong></p>
+  </div>
+
+  <div class="equation" style="background: #fff7ed; border-left-color: var(--residual);">L_total = L_delta + 1.0 · L_gate + 0.1 · L_contact</div>
+</section>
+
+<!-- ═══════════ 6. WHAT WE COMPARE AGAINST ═══════════ -->
+<section>
+  <h3>6 ·  Baselines (no LoRA — the speed claim makes LoRA orthogonal)</h3>
+
+  <div class="panel" style="padding: 0;">
+    <table>
+      <thead>
+        <tr>
+          <th>Baseline</th>
+          <th>What it tests</th>
+          <th>Expected outcome</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>SmolVLA alone</td>
+          <td>open-loop chunk execution</td>
+          <td>lower bound; fails on perturbations</td>
+        </tr>
+        <tr>
+          <td>SmolVLA + A2C2 reimplementation</td>
+          <td>residual w/o gate, w/ multi-view</td>
+          <td>direct competitor on simulation</td>
+        </tr>
+        <tr>
+          <td>SmolVLA with shortened chunk horizon</td>
+          <td>"why not just call VLA more often"</td>
+          <td>blocked by GPU latency on real HW</td>
+        </tr>
+        <tr>
+          <td>HFRVLA w/o gate (g ≡ 1)</td>
+          <td>gate ablation</td>
+          <td>over-correction during transport</td>
+        </tr>
+        <tr>
+          <td>HFRVLA w/o contact aux</td>
+          <td>aux head ablation</td>
+          <td>weaker phase-aware gate behavior</td>
+        </tr>
+        <tr>
+          <td>HFRVLA w/ ConvNeXt-Tiny backbone</td>
+          <td>backbone ablation</td>
+          <td>faster but less robust to lighting</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════ 7. CONTRIBUTIONS ═══════════ -->
+<section>
+  <h3>7 ·  Why this paper exists</h3>
+
+  <div class="panel">
+    <p style="margin-bottom: 14px;"><span class="num-callout" style="background:var(--gate);">1</span><strong>Confidence-gated visual residual on a frozen VLA.</strong>
+      The gate is trained with a <em>prediction-improvement</em> signal — it learns when correction helps, not when correction is large.</p>
+
+    <p style="margin-bottom: 14px;"><span class="num-callout" style="background:var(--fast);">2</span><strong>Task-conditioned spatial pooling (S-B).</strong>
+      DINOv2 patch features + SmolVLA's z_goal/z_phase as cross-attention queries — semantic-aware visual servoing, not blind contact detection.</p>
+
+    <p style="margin-bottom: 14px;"><span class="num-callout" style="background:var(--slow);">3</span><strong>Real-hardware demonstration on LeRobot SO-100 / SO-101.</strong>
+      Three pre-committed tasks (grasp-and-place, peg insertion, push-to-target) with externally applied perturbations.</p>
+
+    <p><span class="num-callout" style="background:var(--residual);">4</span><strong>Contact-event auxiliary supervision (training only).</strong>
+      Multi-task regularization that teaches the GRU temporal state to differentiate transport vs contact phases.</p>
+  </div>
+</section>
+
+<!-- ═══════════ 8. WHAT THIS PAPER IS NOT ═══════════ -->
+<section>
+  <h3 style="border-left-color: var(--muted);">8 ·  Scope Boundaries — out of scope for this paper</h3>
+
+  <div class="panel" style="background: #fafafa;">
+    <ul style="padding-left: 22px; line-height: 1.9; font-size: .92rem; color: #4b5563;">
+      <li>❌ <strong>Long-horizon re-planning / adaptive execution horizon</strong> — future work</li>
+      <li>❌ <strong>Expected-state / world-model prediction</strong> — future work</li>
+      <li>❌ <strong>Force / tactile fusion</strong> — future work</li>
+      <li>❌ <strong>Comparison with LoRA fine-tuning</strong> — orthogonal; our claim is about inference-time reactivity, not parameter efficiency</li>
+      <li>❌ <strong>A new VLA backbone</strong> — we keep SmolVLA unchanged</li>
+    </ul>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  HFRVLA — Architecture Walkthrough &nbsp;·&nbsp;
+  <em>Hierachical_fast_reactive / docs / architecture.html</em> &nbsp;·&nbsp;
+  Drafted 2026-05-14
+</footer>
+
+</body>
+</html>

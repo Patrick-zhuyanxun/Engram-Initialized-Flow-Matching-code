@@ -8,6 +8,10 @@ from lerobot.configs.types import FeatureType, PolicyFeature
 from lerobot.utils.constants import ACTION, OBS_STATE
 from lerobot_policy_hfrvla.configuration_hfrvla import HFRVLAConfig
 from lerobot_policy_hfrvla.fast_reactive import FastReactiveModule, FastReactiveOutput
+from lerobot_policy_hfrvla.fast_wrist_residual import (
+    FastWristResidualModule,
+    FastWristResidualOutput,
+)
 
 
 class _DummyDINOv3Backbone(nn.Module):
@@ -25,6 +29,10 @@ class _DummyDINOv3Backbone(nn.Module):
 def _patch_dino_backbone(monkeypatch):
     monkeypatch.setattr(
         "lerobot_policy_hfrvla.fast_reactive.DINOv3Backbone",
+        _DummyDINOv3Backbone,
+    )
+    monkeypatch.setattr(
+        "lerobot_policy_hfrvla.fast_wrist_residual.DINOv3Backbone",
         _DummyDINOv3Backbone,
     )
 
@@ -112,6 +120,32 @@ def test_fast_module_encodes_sequence_in_one_batched_call(monkeypatch):
     )
 
     assert calls == 1
+
+
+def test_fast_wrist_residual_module_accepts_current_and_previous_features():
+    cfg = HFRVLAConfig(residual_merge_mode="fast_wrist")
+    module = FastWristResidualModule(
+        config=cfg,
+        action_dim=7,
+        proprio_dim=8,
+        zgoal_dim=960,
+        zphase_dim=480,
+    )
+    out = module(
+        wrist_rgb=None,
+        proprio=torch.randn(2, 8),
+        a_base_k=torch.randn(2, 7),
+        k_idx_norm=torch.rand(2, 1),
+        z_goal=torch.randn(2, 960),
+        z_phase=torch.randn(2, 480),
+        prev_a_base=torch.randn(2, 7),
+        prev_delta=torch.randn(2, 7),
+        dino_patches=torch.randn(2, 196, 384).half(),
+    )
+
+    assert out.delta_a.shape == (2, 7)
+    assert out.delta_a.dtype == torch.float32
+    assert 0 < module.count_parameters() < 10_000_000
 
 
 class _StubPolicy:
@@ -590,6 +624,46 @@ def test_stage_b_errors_clearly_without_static_labels():
         policy._compute_losses(out, a_base, a_expert, contact_label=None, batch={})
 
 
+def test_a2c2_merge_ignores_gate_and_applies_fixed_alpha():
+    policy = _policy_shell_for_merge(
+        HFRVLAConfig(
+            residual_merge_mode="fast_wrist",
+            fast_residual_alpha=0.5,
+            delta_max=0.2,
+            safety_joint_velocity_limit=2.0,
+            control_dt=0.1,
+        )
+    )
+    a_base = torch.zeros(1, 7)
+    delta = torch.ones(1, 7)
+    gate = torch.zeros(1)
+
+    out = policy._merge(a_base=a_base, delta_a=delta, gate=gate, prev_a=None)
+
+    assert torch.allclose(out, torch.full_like(a_base, 0.1))
+
+
+def test_a2c2_loss_uses_raw_current_residual_target_not_clipped_target():
+    policy = _policy_shell_for_merge(
+        HFRVLAConfig(
+            residual_merge_mode="fast_wrist",
+            delta_max=0.2,
+            safety_joint_velocity_limit=2.0,
+            control_dt=0.1,
+        )
+    )
+    a_base = torch.zeros(1, 2, 7)
+    a_expert = torch.zeros(1, 2, 7)
+    a_expert[:, 1] = 1.0
+    out = FastWristResidualOutput(delta_a=torch.ones(1, 7))
+
+    losses = policy._compute_losses(out, a_base, a_expert, contact_label=None)
+
+    assert losses["delta"] == pytest.approx(0.0, abs=1e-8)
+    assert torch.allclose(losses["loss"], losses["delta"])
+    assert "gate" not in losses
+
+
 def test_merge_keeps_base_action_unchanged_when_residual_is_zero():
     policy = _policy_shell_for_merge(
         HFRVLAConfig(delta_max=0.0, safety_joint_velocity_limit=2.0, control_dt=0.1)
@@ -685,6 +759,56 @@ def test_offline_training_mode_skips_smolvla_and_trains_from_cached_features(mon
 
     assert torch.isfinite(loss)
     assert set(metrics) >= {"delta", "gate", "loss"}
+
+
+def test_offline_training_mode_a2c2_uses_current_and_previous_cached_features(monkeypatch):
+    from lerobot_policy_hfrvla.modeling_hfrvla import HFRVLAPolicy
+
+    def _fail_smolvla_init(*args, **kwargs):
+        raise AssertionError("offline A2C2 training must not construct SmolVLA")
+
+    monkeypatch.setattr(
+        "lerobot_policy_hfrvla.modeling_hfrvla.SmolVLAPolicy.__init__",
+        _fail_smolvla_init,
+    )
+
+    cfg = HFRVLAConfig(
+        offline_training_mode=True,
+        residual_merge_mode="fast_wrist",
+        seq_len=2,
+        offline_zgoal_dim=960,
+        offline_zphase_dim=480,
+        input_features={
+            OBS_STATE: PolicyFeature(type=FeatureType.STATE, shape=(8,)),
+            "observation.extra.z_goal": PolicyFeature(type=FeatureType.STATE, shape=(960,)),
+            "observation.extra.z_phase": PolicyFeature(type=FeatureType.STATE, shape=(480,)),
+        },
+        output_features={
+            ACTION: PolicyFeature(type=FeatureType.ACTION, shape=(7,)),
+        },
+    )
+
+    policy = HFRVLAPolicy(cfg)
+    assert isinstance(policy.fast, FastWristResidualModule)
+
+    batch = {
+        "observation.state": torch.zeros(2, 2, 8),
+        "action": torch.zeros(2, 2, 7),
+        "observation.extra.a_base": torch.zeros(2, 2, 7),
+        "observation.extra.k_idx_norm": torch.zeros(2, 2),
+        "observation.extra.z_goal": torch.zeros(2, 2, 960),
+        "observation.extra.z_phase": torch.zeros(2, 2, 480),
+        "observation.extra.dino_patches": torch.zeros(2, 2, 196, 384),
+        "observation.extra.contact_label": torch.zeros(2, 2),
+    }
+    batch["action"][:, 0] = 0.25
+    batch["action"][:, 1] = 1.0
+
+    loss, metrics = policy(batch)
+
+    assert torch.isfinite(loss)
+    assert set(metrics) >= {"delta", "loss", "delta_norm", "target_delta_norm"}
+    assert "gate" not in metrics
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required to reproduce GRU safetensors storage views")

@@ -62,6 +62,37 @@ const styles = `
     0%, 100% { opacity: 0.45; transform: scale(0.98); }
     50% { opacity: 0.95; transform: scale(1.02); }
   }
+  @keyframes hfr-queue-pop {
+    0%, 9% { opacity: 0.35; transform: translateY(0) scale(0.96); box-shadow: none; }
+    12%, 22% { opacity: 1; transform: translateY(-14px) scale(1.08); box-shadow: 0 0 34px rgba(50,211,153,.42); }
+    25%, 100% { opacity: 0.42; transform: translateY(0) scale(0.96); box-shadow: none; }
+  }
+  @keyframes hfr-queue-sweep {
+    from { transform: translateX(0); }
+    to { transform: translateX(710px); }
+  }
+  @keyframes hfr-correction-flash {
+    0%, 100% { opacity: 0.38; }
+    50% { opacity: 1; }
+  }
+  @keyframes hfr-live-tick {
+    0%, 8% { transform: translateX(0); }
+    13%, 21% { transform: translateX(126px); }
+    26%, 34% { transform: translateX(252px); }
+    39%, 47% { transform: translateX(378px); }
+    52%, 60% { transform: translateX(504px); }
+    65%, 73% { transform: translateX(630px); }
+    78%, 86% { transform: translateX(756px); }
+    91%, 100% { transform: translateX(882px); }
+  }
+  @keyframes hfr-live-cell {
+    0%, 8% { opacity: 1; transform: translateY(-8px); }
+    10%, 100% { opacity: 0.42; transform: translateY(0); }
+  }
+  @keyframes hfr-live-send {
+    0%, 100% { box-shadow: 0 0 0 rgba(119,183,255,0); }
+    50% { box-shadow: 0 0 42px rgba(119,183,255,.42); }
+  }
   .fade-1, .fade-2, .fade-3, .fade-4, .fade-5 {
     opacity: 0;
     animation: hfr-fade-up 720ms cubic-bezier(.2,.7,.2,1) forwards;
@@ -75,6 +106,24 @@ const styles = `
     animation: hfr-line 900ms cubic-bezier(.2,.7,.2,1) forwards;
   }
   .pulse { animation: hfr-pulse 2.8s ease-in-out infinite; }
+  .queue-pop {
+    animation: hfr-queue-pop 3.6s ease-in-out infinite;
+  }
+  .queue-sweep {
+    animation: hfr-queue-sweep 3.6s linear infinite;
+  }
+  .correction-flash {
+    animation: hfr-correction-flash 1.2s ease-in-out infinite;
+  }
+  .live-tick {
+    animation: hfr-live-tick 6.4s steps(1, end) infinite;
+  }
+  .live-cell {
+    animation: hfr-live-cell 6.4s ease-in-out infinite;
+  }
+  .live-send {
+    animation: hfr-live-send 1.1s ease-in-out infinite;
+  }
 `;
 
 const Styles = () => <style>{styles}</style>;
@@ -659,6 +708,305 @@ const FastModuleOutputs: Page = () => (
   </PageShell>
 );
 
+const LeRobotHardwareDispatch: Page = () => (
+  <PageShell label="Hardware dispatch">
+    <Heading maxWidth={1580}>LeRobot 每 tick 只送一個命令</Heading>
+    <Note width={1500}>
+      async 路徑先把 action chunk 變成本地 queue；control loop 每個 tick 只 pop 一個點，再呼叫 robot.send_action()。
+    </Note>
+    <div className="fade-3" style={{ marginTop: 26, display: 'grid', gridTemplateColumns: '1.02fr .98fr', gap: 26, alignItems: 'start', width: 1640 }}>
+      <div
+        style={{
+          border: `1px solid ${colors.lineStrong}`,
+          background: colors.panel,
+          borderRadius: 10,
+          padding: '24px 28px',
+          minHeight: 492,
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 62px 1fr', gap: 14, alignItems: 'center' }}>
+          <DiagramBox title="Policy server" subtitle="predict_action_chunk(obs)" tone={colors.gold} style={{ minHeight: 112, padding: '18px 20px', minWidth: 0 }}>
+            <DiagramChip label="8 actions" detail="a[0] ... a[7]" tone={colors.gold} />
+          </DiagramBox>
+          <div style={{ display: 'grid', placeItems: 'center' }}>
+            <div style={{ fontFamily: font.mono, fontSize: 38, color: colors.gold, lineHeight: 1 }}>→</div>
+            <div style={{ marginTop: 6, fontFamily: font.mono, fontSize: 15, color: colors.muted }}>gRPC</div>
+          </div>
+          <DiagramBox title="Robot client" subtitle="local action queue" tone={colors.accent} style={{ minHeight: 112, padding: '18px 20px', minWidth: 0 }}>
+            <DiagramChip label="TimedAction[]" detail="timestamped points" tone={colors.accent} />
+          </DiagramBox>
+        </div>
+
+        <div style={{ marginTop: 32, position: 'relative', height: 146 }}>
+          <div style={{ position: 'absolute', left: 22, right: 22, top: 64, height: 4, background: colors.lineStrong }} />
+          <div
+            className="queue-sweep"
+            style={{
+              position: 'absolute',
+              left: 26,
+              top: 50,
+              width: 34,
+              height: 34,
+              borderRadius: '50%',
+              background: colors.accent,
+              boxShadow: '0 0 34px rgba(50,211,153,.46)',
+            }}
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 14, position: 'relative' }}>
+            {Array.from({ length: 8 }, (_, i) => (
+              <div key={i} style={{ display: 'grid', justifyItems: 'center', gap: 14 }}>
+                <div
+                  className="queue-pop"
+                  style={{
+                    animationDelay: `${i * 0.45}s`,
+                    width: 66,
+                    height: 66,
+                    borderRadius: 10,
+                    border: `2px solid ${i === 0 ? colors.gold : colors.accent}`,
+                    background: i === 0 ? 'rgba(247,198,106,.16)' : 'rgba(50,211,153,.12)',
+                    display: 'grid',
+                    placeItems: 'center',
+                    fontFamily: font.mono,
+                    fontSize: 23,
+                    fontWeight: 900,
+                    color: i === 0 ? colors.gold : colors.text,
+                  }}
+                >
+                  a{i}
+                </div>
+                <div style={{ fontFamily: font.mono, fontSize: 18, color: colors.muted }}>t+{i}dt</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: '1fr 56px 1fr', gap: 12, alignItems: 'center' }}>
+          <DiagramBox title="control_loop @ fps" subtitle="每 1/fps 秒 pop 一個 queued action" tone={colors.blue} style={{ minHeight: 108, padding: '18px 20px', minWidth: 0 }}>
+            <DiagramChip label="a_i tensor" detail="1D action" tone={colors.blue} />
+          </DiagramBox>
+          <div style={{ display: 'grid', placeItems: 'center' }}>
+            <div style={{ fontFamily: font.mono, fontSize: 34, color: colors.blue, lineHeight: 1 }}>→</div>
+            <div style={{ marginTop: 6, fontFamily: font.mono, fontSize: 15, color: colors.muted }}>dict</div>
+          </div>
+          <DiagramBox title="send_action()" subtitle="送到 bus / SDK / robot driver" tone={colors.rose} style={{ minHeight: 108, padding: '18px 20px', minWidth: 0 }}>
+            <DiagramChip label="single command" detail="不是整包 chunk" tone={colors.rose} />
+          </DiagramBox>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gap: 12 }}>
+        {[
+          ['你的理解要修正一點', 'action chunk 是 server/client 的緩衝格式；硬體層通常看到的是每個 tick 的單一 action dict。', colors.gold],
+          ['HFRVLA per-step correction', '正確語意是每個 a_base[i] 先變成 a_base[i] + alpha * clip(delta_i)，再進 queue 或 send_action。', colors.accent],
+          ['controller 會不會吃不下', '問題不在 8 個點本身，而在 loop fps、bus latency、camera latency 是否能穩定執行每個 corrected point。', colors.rose],
+          ['重要 caveat', 'LeRobot async server 呼叫 predict_action_chunk()；HFRVLA 現在的修正主路徑在 select_action()，直接走 async 可能只拿到 base chunk。', colors.blue],
+        ].map(([title, body, tone]) => (
+          <div
+            key={title}
+            style={{
+              border: `1px solid ${colors.line}`,
+              background: colors.panel,
+              borderRadius: 10,
+              padding: '17px 20px',
+              minHeight: 84,
+            }}
+          >
+            <div style={{ fontSize: 24, fontWeight: 900, color: tone as string }}>{title}</div>
+            <div style={{ marginTop: 8, fontSize: 20, lineHeight: 1.28, color: colors.muted }}>{body}</div>
+          </div>
+        ))}
+        <CodeBlock size={18} lineHeight={1.15} padding="18px 22px">{`async hardware path
+  server: predict_action_chunk(obs) -> [a0..a7]
+  server: attach timestamps t+i*dt
+  client: merge into local queue
+  loop:   pop one action per 1/fps
+  robot:  send_action({joint_i: value, ...})`}</CodeBlock>
+      </div>
+    </div>
+  </PageShell>
+);
+
+const LiveCorrectionTimeline: Page = () => {
+  const ticks = Array.from({ length: 8 }, (_, i) => i);
+
+  return (
+    <PageShell label="Runtime timing">
+      <Heading maxWidth={1600}>chunk 是慢計畫，correction 是每 tick 閉環</Heading>
+      <Note width={1500}>
+        第二種部署方式下，queue 裡保留 slow VLA 的 base plan；每個 control tick 讀最新 wrist/state，只修正當下即將送出的那一點。
+      </Note>
+      <div className="fade-3" style={{ marginTop: 28, display: 'grid', gridTemplateColumns: '1120px 1fr', gap: 28, width: 1640 }}>
+        <div
+          style={{
+            border: `1px solid ${colors.lineStrong}`,
+            background: colors.panel,
+            borderRadius: 10,
+            padding: '26px 30px',
+            height: 565,
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{ display: 'grid', gap: 20 }}>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: 28, fontWeight: 900, color: colors.gold }}>Slow VLA chunk m</div>
+                <div style={{ fontFamily: font.mono, fontSize: 18, color: colors.muted }}>replan after K ticks</div>
+              </div>
+              <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '978px 1fr', gap: 18, alignItems: 'center' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 96px)', gap: 30 }}>
+                  {ticks.map((i) => (
+                    <div
+                      key={`base-${i}`}
+                      style={{
+                        height: 58,
+                        borderRadius: 9,
+                        border: `1px solid ${colors.gold}`,
+                        background: 'rgba(247,198,106,.12)',
+                        display: 'grid',
+                        placeItems: 'center',
+                        fontFamily: font.mono,
+                        fontSize: 18,
+                        color: colors.gold,
+                      }}
+                    >
+                      a_base[{i}]
+                    </div>
+                  ))}
+                </div>
+                <div
+                  style={{
+                    height: 58,
+                    borderRadius: 9,
+                    border: `1px dashed ${colors.dim}`,
+                    display: 'grid',
+                    placeItems: 'center',
+                    fontFamily: font.mono,
+                    fontSize: 17,
+                    color: colors.dim,
+                  }}
+                >
+                  chunk m+1
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: 28, fontWeight: 900, color: colors.accent }}>Fast HFRVLA correction</div>
+                <div style={{ fontFamily: font.mono, fontSize: 18, color: colors.muted }}>{'latest obs(t) -> delta(t)'}</div>
+              </div>
+              <div style={{ marginTop: 14, position: 'relative', height: 132 }}>
+                <div style={{ position: 'absolute', left: 0, top: 58, width: 978, height: 4, background: colors.lineStrong }} />
+                <div
+                  className="live-tick"
+                  style={{
+                    position: 'absolute',
+                    left: 30,
+                    top: 42,
+                    width: 38,
+                    height: 38,
+                    borderRadius: '50%',
+                    background: colors.accent,
+                    boxShadow: '0 0 36px rgba(50,211,153,.5)',
+                    zIndex: 2,
+                  }}
+                />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 96px)', gap: 30, position: 'relative', zIndex: 1 }}>
+                  {ticks.map((i) => (
+                    <div
+                      key={`delta-${i}`}
+                      className="live-cell"
+                      style={{
+                        animationDelay: `${i * 0.8}s`,
+                        height: 92,
+                        borderRadius: 9,
+                        border: `1px solid ${colors.accent}`,
+                        background: 'rgba(50,211,153,.12)',
+                        padding: '12px 8px',
+                        display: 'grid',
+                        alignContent: 'center',
+                        gap: 6,
+                        textAlign: 'center',
+                      }}
+                    >
+                      <div style={{ fontFamily: font.mono, fontSize: 17, color: colors.text }}>obs{i}</div>
+                      <div style={{ fontFamily: font.mono, fontSize: 19, fontWeight: 900, color: colors.accent }}>delta{i}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: 28, fontWeight: 900, color: colors.blue }}>Hardware command stream</div>
+                <div style={{ fontFamily: font.mono, fontSize: 18, color: colors.muted }}>one send_action per tick</div>
+              </div>
+              <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: 'repeat(8, 96px)', gap: 30 }}>
+                {ticks.map((i) => (
+                  <div
+                    key={`send-${i}`}
+                    className="live-cell"
+                    style={{
+                      animationDelay: `${i * 0.8}s`,
+                      height: 76,
+                      borderRadius: 9,
+                      border: `1px solid ${colors.blue}`,
+                      background: 'rgba(119,183,255,.1)',
+                      display: 'grid',
+                      placeItems: 'center',
+                      fontFamily: font.mono,
+                      fontSize: 16,
+                      lineHeight: 1.2,
+                      color: colors.text,
+                      textAlign: 'center',
+                    }}
+                  >
+                    send
+                    <br />
+                    a_final[{i}]
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gap: 10 }}>
+          {[
+            ['Action chunk relation', '同一個 chunk 內的 a_base[0..7] 是 slow VLA 對未來 K 個 tick 的 nominal plan。', colors.gold],
+            ['Correction relation', 'delta_i 用 obs_i、a_base_i、chunk index、previous delta 在當下重新估。', colors.accent],
+            ['What controller sees', 'controller 只看到 a_final_i，不會同時收到 base/correction 兩條命令。', colors.blue],
+            ['Latency budget', '如果 camera/bus 讓 tick 掉到 8 Hz，reactive correction 的有效頻率也只剩 8 Hz。', colors.rose],
+          ].map(([title, body, tone]) => (
+            <div
+              key={title}
+              style={{
+                border: `1px solid ${colors.line}`,
+                background: colors.panel,
+                borderRadius: 10,
+                padding: '14px 18px',
+                minHeight: 82,
+              }}
+            >
+              <div style={{ fontSize: 22, fontWeight: 900, color: tone as string }}>{title}</div>
+              <div style={{ marginTop: 7, fontSize: 18, lineHeight: 1.24, color: colors.muted }}>{body}</div>
+            </div>
+          ))}
+          <CodeBlock size={16} lineHeight={1.12} padding="14px 18px">{`for each tick i:
+  obs_i = latest wrist/state
+  a_i   = pop base action
+  d_i   = fast(obs_i, a_i, i, prev_d)
+  send_action(a_i + alpha * clip(d_i))`}</CodeBlock>
+        </div>
+      </div>
+    </PageShell>
+  );
+};
+
 const LearningObjective: Page = () => (
   <PageShell label="Learning objective">
     <Heading>目前先用最小可行的 residual 目標</Heading>
@@ -1147,6 +1495,8 @@ export default [
   Architecture,
   TrainingBatchIO,
   FastModuleOutputs,
+  LeRobotHardwareDispatch,
+  LiveCorrectionTimeline,
   LearningObjective,
   Dataset,
   Pipeline,

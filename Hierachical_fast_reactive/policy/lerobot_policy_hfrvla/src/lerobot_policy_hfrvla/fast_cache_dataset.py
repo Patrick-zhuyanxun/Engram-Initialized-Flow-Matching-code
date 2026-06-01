@@ -157,11 +157,16 @@ class HFRVLAFastCacheDataset(Dataset):
 
         if cache_root is None:
             raise ValueError("cache_root is required unless roots=[...] is provided")
+        if seq_len is None:
+            raise ValueError(
+                "seq_len must be provided explicitly; fast-cache storage is frame-level "
+                "and does not define a training window length."
+            )
 
         self._children: list[HFRVLAFastCacheDataset] | None = None
         self.root = Path(cache_root)
         self.info = load_fast_cache_metadata(self.root)
-        self.seq_len = int(seq_len or self.info.get("seq_len") or 1)
+        self.seq_len = int(seq_len)
         self.episode_starts = np.load(self.root / "episode_starts.npy", mmap_mode="r")
         self.episode_ends = np.load(self.root / "episode_ends.npy", mmap_mode="r")
         self.arrays = {

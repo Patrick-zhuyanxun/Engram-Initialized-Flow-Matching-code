@@ -27,6 +27,10 @@ def test_lr_wd_sweep_dry_run_emits_complete_grid() -> None:
     assert "LR=1e-5" in command_lines[0]
     assert "WEIGHT_DECAY=0" in command_lines[0]
     assert "WANDB_ENABLE=true" in command_lines[0]
+    assert "RESIDUAL_MERGE_MODE=fast_wrist" in command_lines[0]
+    assert "FAST_RESIDUAL_ALPHA=1.0" in command_lines[0]
+    assert "FAST_RESIDUAL_USE_LATENT_CONTEXT=true" in command_lines[0]
+    assert "A2C2_ALPHA" not in command_lines[0]
     assert "SAVE_FREQ=25000" in command_lines[0]
     assert "SCHEDULER_DECAY_LR=1e-5" in command_lines[0]
     assert any(

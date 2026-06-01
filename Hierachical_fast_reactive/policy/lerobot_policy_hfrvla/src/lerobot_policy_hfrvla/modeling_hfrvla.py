@@ -32,15 +32,37 @@ from lerobot.utils.constants import ACTION, OBS_STATE
 
 from lerobot_policy_hfrvla.configuration_hfrvla import HFRVLAConfig
 from lerobot_policy_hfrvla.fast_reactive import FastReactiveModule, FastReactiveOutput
+from lerobot_policy_hfrvla.fast_wrist_residual import (
+    FastWristResidualModule,
+    FastWristResidualOutput,
+)
 from lerobot_policy_hfrvla.processor_hfrvla import normalize_for_dinov3
+
+
+def _residual_merge_mode(config: HFRVLAConfig) -> str:
+    mode = str(getattr(config, "residual_merge_mode", "gated")).strip().lower()
+    return "fast_wrist" if mode == "a2c2" else mode
+
+
+def _fast_residual_alpha(config: HFRVLAConfig) -> float:
+    return float(
+        getattr(
+            config,
+            "fast_residual_alpha",
+            getattr(config, "a2c2_alpha", 1.0),
+        )
+    )
 
 
 def _set_head_grads(policy_or_stub, *, gate: bool, contact: bool) -> None:
     """Toggle requires_grad on the fast module's auxiliary heads."""
-    for p in policy_or_stub.fast.gate_head.parameters():
-        p.requires_grad = gate
-    if policy_or_stub.fast.contact_head is not None:
-        for p in policy_or_stub.fast.contact_head.parameters():
+    gate_head = getattr(policy_or_stub.fast, "gate_head", None)
+    if gate_head is not None:
+        for p in gate_head.parameters():
+            p.requires_grad = gate
+    contact_head = getattr(policy_or_stub.fast, "contact_head", None)
+    if contact_head is not None:
+        for p in contact_head.parameters():
             p.requires_grad = contact
 
 
@@ -192,13 +214,28 @@ class HFRVLAPolicy(SmolVLAPolicy):
             else int(getattr(self.config, "max_state_dim", 32))
         )
 
-        self.fast = FastReactiveModule(
-            config=self.config,
-            action_dim=action_dim,
-            proprio_dim=proprio_dim,
-            zgoal_dim=zgoal_dim,
-            zphase_dim=zphase_dim,
-        )
+        mode = _residual_merge_mode(self.config)
+        if mode == "fast_wrist":
+            self.fast = FastWristResidualModule(
+                config=self.config,
+                action_dim=action_dim,
+                proprio_dim=proprio_dim,
+                zgoal_dim=zgoal_dim,
+                zphase_dim=zphase_dim,
+            )
+        elif mode == "gated":
+            self.fast = FastReactiveModule(
+                config=self.config,
+                action_dim=action_dim,
+                proprio_dim=proprio_dim,
+                zgoal_dim=zgoal_dim,
+                zphase_dim=zphase_dim,
+            )
+        else:
+            raise ValueError(
+                f"Unsupported residual_merge_mode={self.config.residual_merge_mode!r}; "
+                "expected 'gated' or 'fast_wrist'."
+            )
 
     def _init_hfrvla_state(self) -> None:
         """Initialize curriculum, queues, and per-episode fast state."""
@@ -216,6 +253,8 @@ class HFRVLAPolicy(SmolVLAPolicy):
         # ── 5. Inference state ──
         self._fast_hidden_state: Optional[Tensor] = None
         self._prev_action: Optional[Tensor] = None
+        self._prev_a_base: Optional[Tensor] = None
+        self._prev_delta_exec: Optional[Tensor] = None
         self._chunk_size: int = self.config.n_action_steps
         self._chunk_consumed: int = 0
         self._queues = {
@@ -315,6 +354,8 @@ class HFRVLAPolicy(SmolVLAPolicy):
             super().reset()
         self._fast_hidden_state = None
         self._prev_action = None
+        self._prev_a_base = None
+        self._prev_delta_exec = None
         self._chunk_consumed = 0
         self._clear_hook_cache()
 
@@ -373,6 +414,38 @@ class HFRVLAPolicy(SmolVLAPolicy):
             # Hooks never fired (e.g. first call has empty queue but SmolVLA
             # forward path differed); fall back to a_base alone.
             return a_base
+
+        if _residual_merge_mode(self.config) == "fast_wrist":
+            prev_a_base = self._prev_a_base if self._prev_a_base is not None else a_base
+            prev_delta = (
+                self._prev_delta_exec
+                if self._prev_delta_exec is not None
+                else torch.zeros_like(a_base)
+            )
+            fwr_out: FastWristResidualOutput = self.fast(
+                wrist_rgb=wrist_rgb,
+                proprio=proprio,
+                a_base_k=a_base,
+                k_idx_norm=k_norm,
+                z_goal=self._zgoal_cache,
+                z_phase=self._zphase_cache,
+                prev_a_base=prev_a_base,
+                prev_delta=prev_delta,
+            )
+            a_final = self._merge(
+                a_base=a_base,
+                delta_a=fwr_out.delta_a,
+                gate=torch.ones(a_base.shape[0], device=a_base.device, dtype=a_base.dtype),
+                prev_a=self._prev_action,
+            )
+            delta_exec = (
+                _fast_residual_alpha(self.config)
+                * self._clip_fast_residual(fwr_out.delta_a)
+            )
+            self._prev_a_base = a_base.detach()
+            self._prev_delta_exec = delta_exec.detach()
+            self._prev_action = a_final.detach()
+            return a_final
 
         fr_out: FastReactiveOutput = self.fast(
             wrist_rgb=wrist_rgb,
@@ -440,6 +513,8 @@ class HFRVLAPolicy(SmolVLAPolicy):
     ) -> Tensor:
         del prev_a  # Base SmolVLA chunks are already valid actions.
         delta_clip = self._clip_fast_residual(delta_a)
+        if _residual_merge_mode(self.config) == "fast_wrist":
+            return a_base + _fast_residual_alpha(self.config) * delta_clip
         return a_base + gate.unsqueeze(-1) * delta_clip
 
     def _clip_fast_residual(self, delta_a: Tensor) -> Tensor:
@@ -483,6 +558,35 @@ class HFRVLAPolicy(SmolVLAPolicy):
         dino_patches = batch["observation.extra.dino_patches"]
         contact_label = batch.get("observation.extra.contact_label")
 
+        if _residual_merge_mode(self.config) == "fast_wrist":
+            if a_base.dim() != 3 or a_base.size(1) < 2:
+                raise ValueError(
+                    "Fast Wrist Residual requires policy.seq_len >= 2 so the "
+                    "batch contains [previous, current] frames."
+                )
+            prev_a_base = a_base[:, -2]
+            prev_delta = a_expert[:, -2] - a_base[:, -2]
+            fwr_out: FastWristResidualOutput = self.fast(
+                wrist_rgb=None,
+                proprio=proprio[:, -1],
+                a_base_k=a_base[:, -1],
+                k_idx_norm=k_idx_norm[:, -1],
+                z_goal=z_goal[:, -1],
+                z_phase=z_phase[:, -1],
+                prev_a_base=prev_a_base,
+                prev_delta=prev_delta,
+                dino_patches=dino_patches[:, -1],
+            )
+            losses = self._compute_losses(
+                fwr_out,
+                a_base,
+                a_expert,
+                contact_label=None,
+                batch=batch,
+            )
+            output_dict = {key: value.detach().item() for key, value in losses.items()}
+            return losses["loss"], output_dict
+
         fr_out: FastReactiveOutput = self.fast(
             wrist_rgb=None,
             proprio=proprio,
@@ -508,12 +612,17 @@ class HFRVLAPolicy(SmolVLAPolicy):
 
     def _compute_losses(
         self,
-        out: FastReactiveOutput,
+        out: FastReactiveOutput | FastWristResidualOutput,
         a_base: Tensor,
         a_expert: Tensor,
         contact_label: Optional[Tensor],
         batch: Optional[dict[str, Tensor]] = None,
     ) -> dict[str, Tensor]:
+        if _residual_merge_mode(self.config) == "fast_wrist":
+            if not isinstance(out, FastWristResidualOutput):
+                raise TypeError("Fast Wrist Residual objective requires FastWristResidualOutput.")
+            return self._compute_fast_wrist_losses(out=out, a_base=a_base, a_expert=a_expert)
+
         if getattr(self.config, "use_stage_b_objective", False):
             return self._compute_stage_b_losses(
                 out=out,
@@ -594,6 +703,38 @@ class HFRVLAPolicy(SmolVLAPolicy):
         if "contact" in losses:
             total = total + self.config.loss_lambda_contact * losses["contact"]
         losses["loss"] = total
+        return losses
+
+    def _compute_fast_wrist_losses(
+        self,
+        *,
+        out: FastWristResidualOutput,
+        a_base: Tensor,
+        a_expert: Tensor,
+    ) -> dict[str, Tensor]:
+        if a_base.dim() == 3:
+            a_base_curr = a_base[:, -1]
+            a_expert_curr = a_expert[:, -1]
+        elif a_base.dim() == 2:
+            a_base_curr = a_base
+            a_expert_curr = a_expert
+        else:
+            raise ValueError(f"a_base must be 2-D or 3-D, got {a_base.dim()}-D")
+
+        target_delta = a_expert_curr - a_base_curr
+        l_delta = F.mse_loss(out.delta_a, target_delta)
+        losses: dict[str, Tensor] = {
+            "delta": l_delta,
+            "loss": l_delta,
+            "delta_norm": out.delta_a.norm(dim=-1).mean().detach(),
+            "target_delta_norm": target_delta.norm(dim=-1).mean().detach(),
+            "delta_clip_fraction": (
+                (out.delta_a.abs() > float(self.config.delta_max))
+                .to(dtype=out.delta_a.dtype)
+                .mean()
+                .detach()
+            ),
+        }
         return losses
 
     def _stage_b_label(

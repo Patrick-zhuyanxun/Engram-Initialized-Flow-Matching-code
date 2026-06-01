@@ -1,2 +1,38 @@
-checkpoints/HFRVLA_libero_smoke/
-checkpoints/HFRVLA_libero_v1/
+# Local datasets, model weights, training outputs, and generated caches.
+checkpoints/
+outputs/
+data/
+meta/
+.cache/
+.pytest_cache/
+nohup.out
+
+# Python artifacts.
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Large ML artifacts.
+*.pt
+*.pth
+*.safetensors
+*.parquet
+*.npy
+*.npz
+*.mp4
+*.avi
+*.mkv
+*.wandb
+
+# Local editor/agent state.
+.claude/
+.codex/
+.gemini/
+
+# Frontend dependencies and build outputs.
+node_modules/
+dist/
+dist-*/
+docs/presentations/*/node_modules/
+docs/presentations/*/dist/
+docs/presentations/*/dist-*/

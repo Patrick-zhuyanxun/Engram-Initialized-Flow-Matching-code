@@ -43,6 +43,30 @@ def test_conservative_objective_defaults_present():
     assert cfg.gate_task_budget == 0.25
 
 
+def test_fast_wrist_defaults_keep_existing_gated_path():
+    cfg = _bare_config()
+    assert cfg.residual_merge_mode == "gated"
+    assert cfg.fast_residual_alpha == 1.0
+    assert cfg.fast_residual_use_latent_context is True
+    # Deprecated aliases stay readable for old checkpoints/scripts.
+    assert cfg.a2c2_alpha == 1.0
+    assert cfg.a2c2_use_latent_context is True
+
+
+def test_deprecated_a2c2_config_aliases_normalize_to_fast_wrist():
+    cfg = HFRVLAConfig(
+        residual_merge_mode="a2c2",
+        a2c2_alpha=0.5,
+        a2c2_use_latent_context=False,
+    )
+
+    assert cfg.residual_merge_mode == "fast_wrist"
+    assert cfg.fast_residual_alpha == 0.5
+    assert cfg.fast_residual_use_latent_context is False
+    assert cfg.a2c2_alpha == 0.5
+    assert cfg.a2c2_use_latent_context is False
+
+
 def test_curriculum_total_helper():
     cfg = _bare_config()
     assert cfg.curriculum_total_steps() == 60000

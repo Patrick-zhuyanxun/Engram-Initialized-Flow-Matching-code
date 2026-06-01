@@ -1,6 +1,6 @@
 # lerobot_policy_hfrvla
 
-**Hierarchical Fast-Reactive VLA** — a LeRobot plugin that mounts a small, trainable, wrist-camera-only residual policy on top of a frozen SmolVLA. The fast module fires at every control step and emits `(δa, gate, contact_aux)`; inference keeps the frozen `a_base` intact and only clamps the fast residual before computing `a_base + g · clip(δa)`.
+**Hierarchical Fast-Reactive VLA** — a LeRobot plugin that mounts a small, trainable, wrist-camera residual policy on top of a frozen SmolVLA. The default gated fast module emits `(delta_a, gate, contact_aux)` and computes `a_base + gate * clip(delta_a)`. The optional A2C2-Wrist baseline uses a stateless feed-forward correction head without gate/contact/GRU and computes `a_base + alpha * clip(delta_a)`.
 
 Training uses the same deployed action form: the delta target is clipped to
 the deployable residual range, the gate only opens when the clipped residual
@@ -43,17 +43,19 @@ cd ~/Patrick/VLA_research/Hierachical_fast_reactive
 
 ~/Robotic_infra/lerobot/.venv/bin/python scripts/build_hfrvla_fastcache.py \
     --source-root checkpoints/HFRVLA_libero_v1_merged_reindexed \
-    --cache-root checkpoints/HFRVLA_libero_v1_fastcache_seq4 \
-    --seq-len 4
+    --cache-root checkpoints/HFRVLA_libero_v1_fastcache_v2
 
 HFRVLA_DATASET_BACKEND=fastcache \
-HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_seq4 \
+HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_v2 \
 SEQ_LEN=4 \
 ~/Robotic_infra/lerobot/.venv/bin/python scripts/train_via_lerobot.py \
     --dataset.repo_id=HFRVLA_libero_v1 \
     --dataset.root=checkpoints/HFRVLA_libero_v1_merged_reindexed \
     --policy.type=hfrvla
 ```
+
+Fast-cache storage is frame-level; `SEQ_LEN` is only a training-time windowing
+choice passed to `--policy.seq_len`.
 
 ## Registration
 

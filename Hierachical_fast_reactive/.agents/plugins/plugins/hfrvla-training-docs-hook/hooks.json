@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|apply_patch|functions\\.apply_patch|Bash|exec_command|functions\\.exec_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ./scripts/sync_training_presentation.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

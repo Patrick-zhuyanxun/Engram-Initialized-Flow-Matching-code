@@ -182,6 +182,8 @@ _FAST_CONFIG_OVERRIDE_KEYS = {
     "chunk_size",
     "contact_head_enabled",
     "control_dt",
+    "a2c2_alpha",
+    "a2c2_use_latent_context",
     "delta_max",
     "dinov3_feature_dim",
     "dinov3_image_size",
@@ -189,6 +191,8 @@ _FAST_CONFIG_OVERRIDE_KEYS = {
     "gru_hidden",
     "gru_layers",
     "head_hidden",
+    "fast_residual_alpha",
+    "fast_residual_use_latent_context",
     "inference_disable_fast",
     "max_action_dim",
     "max_state_dim",
@@ -197,6 +201,7 @@ _FAST_CONFIG_OVERRIDE_KEYS = {
     "pool_query_dim",
     "safety_joint_velocity_limit",
     "seq_len",
+    "residual_merge_mode",
     "zgoal_proj_dim",
     "zphase_proj_dim",
 }
@@ -220,6 +225,7 @@ def _apply_fast_config_overrides(config: HFRVLAConfig, fast_config: dict) -> Non
     for key in _FAST_CONFIG_OVERRIDE_KEYS:
         if key in fast_config and hasattr(config, key):
             setattr(config, key, fast_config[key])
+    config.normalize_deprecated_aliases()
 
     # The packaged checkpoint is for online eval/deployment, not cached-feature
     # offline training.

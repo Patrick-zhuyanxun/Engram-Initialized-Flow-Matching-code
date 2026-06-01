@@ -42,7 +42,7 @@ SCHEDULER_DECAY_LR="${SCHEDULER_DECAY_LR:-$LR}"
 
 SEQ_LEN="${SEQ_LEN:-8}"
 HFRVLA_DATASET_BACKEND="${HFRVLA_DATASET_BACKEND:-lerobot}"
-HFRVLA_FASTCACHE_ROOT="${HFRVLA_FASTCACHE_ROOT:-$PROJECT_ROOT/checkpoints/HFRVLA_libero_v1_fastcache_seq${SEQ_LEN}}"
+HFRVLA_FASTCACHE_ROOT="${HFRVLA_FASTCACHE_ROOT:-$PROJECT_ROOT/checkpoints/HFRVLA_libero_v1_fastcache_v2}"
 HFRVLA_FASTCACHE_ROLLOUT_ROOT="${HFRVLA_FASTCACHE_ROLLOUT_ROOT:-}"
 case "${HFRVLA_DATASET_BACKEND,,}" in
   lerobot|fastcache)
@@ -96,11 +96,16 @@ LOSS_LAMBDA_SMOOTH="${LOSS_LAMBDA_SMOOTH:-0.2}"
 FOCAL_GAMMA="${FOCAL_GAMMA:-2.0}"
 FOCAL_POS_WEIGHT="${FOCAL_POS_WEIGHT:-4.0}"
 GATE_TASK_BUDGET="${GATE_TASK_BUDGET:-0.25}"
+RESIDUAL_MERGE_MODE="${RESIDUAL_MERGE_MODE:-gated}"
+A2C2_ALPHA="${A2C2_ALPHA:-1.0}"
+A2C2_USE_LATENT_CONTEXT="${A2C2_USE_LATENT_CONTEXT:-true}"
 
 WANDB_ENABLE="${WANDB_ENABLE:-false}"
 case "${WANDB_ENABLE,,}" in
   1|true|yes|on)
     WANDB_ENABLE="true"
+    unset WANDB_MODE
+    unset WANDB_DISABLED
     ;;
   *)
     WANDB_ENABLE="false"
@@ -147,8 +152,7 @@ if [[ "$HFRVLA_DATASET_BACKEND" == "fastcache" && ! -f "$HFRVLA_FASTCACHE_ROOT/m
 Build it first:
   $PY $PROJECT_ROOT/scripts/build_hfrvla_fastcache.py \\
       --source-root "$DATASET_ROOT" \\
-      --cache-root "$HFRVLA_FASTCACHE_ROOT" \\
-      --seq-len "$SEQ_LEN"
+      --cache-root "$HFRVLA_FASTCACHE_ROOT"
 EOF
   exit 1
 fi
@@ -162,7 +166,6 @@ Build it first:
   $PY $PROJECT_ROOT/scripts/build_hfrvla_fastcache.py \\
       --source-root "$PROJECT_ROOT/checkpoints/HFRVLA_libero_v1_zero_fast_rollouts" \\
       --cache-root "$HFRVLA_FASTCACHE_ROLLOUT_ROOT" \\
-      --seq-len "$SEQ_LEN" \\
       --static-y-preserve
 EOF
   exit 1
@@ -197,7 +200,7 @@ echo "[hfrvla-train] dataset_backend=$HFRVLA_DATASET_BACKEND fastcache_root=$HFR
 echo "[hfrvla-train] output=$OUT_DIR"
 echo "[hfrvla-train] steps=$STEPS batch_size=$BATCH_SIZE num_workers=$NUM_WORKERS seq_len=$SEQ_LEN device=$DEVICE"
 echo "[hfrvla-train] curriculum warmup=$WARMUP_STEPS joint=$JOINT_STEPS refine=$REFINE_STEPS"
-echo "[hfrvla-train] objective stage_b=$USE_STAGE_B delta_target_clip=$LOSS_DELTA_TARGET_CLIP gate=$LOSS_LAMBDA_GATE gate_margin=$GATE_IMPROVEMENT_MARGIN final=$LOSS_LAMBDA_FINAL preserve=$LOSS_LAMBDA_PRESERVE gate_prior=$LOSS_LAMBDA_GATE_PRIOR preserve_zero=$LOSS_LAMBDA_PRESERVE_ZERO preserve_thresh=$ERR_PRESERVE_THRESH correct=$LOSS_LAMBDA_CORRECT rate=$LOSS_LAMBDA_RATE smooth=$LOSS_LAMBDA_SMOOTH focal_gamma=$FOCAL_GAMMA focal_pos_weight=$FOCAL_POS_WEIGHT gate_budget=$GATE_TASK_BUDGET"
+echo "[hfrvla-train] objective residual_mode=$RESIDUAL_MERGE_MODE a2c2_alpha=$A2C2_ALPHA a2c2_use_latent_context=$A2C2_USE_LATENT_CONTEXT stage_b=$USE_STAGE_B delta_target_clip=$LOSS_DELTA_TARGET_CLIP gate=$LOSS_LAMBDA_GATE gate_margin=$GATE_IMPROVEMENT_MARGIN final=$LOSS_LAMBDA_FINAL preserve=$LOSS_LAMBDA_PRESERVE gate_prior=$LOSS_LAMBDA_GATE_PRIOR preserve_zero=$LOSS_LAMBDA_PRESERVE_ZERO preserve_thresh=$ERR_PRESERVE_THRESH correct=$LOSS_LAMBDA_CORRECT rate=$LOSS_LAMBDA_RATE smooth=$LOSS_LAMBDA_SMOOTH focal_gamma=$FOCAL_GAMMA focal_pos_weight=$FOCAL_POS_WEIGHT gate_budget=$GATE_TASK_BUDGET"
 echo "[hfrvla-train] offline_training_mode=true z_goal=$OFFLINE_ZGOAL_DIM z_phase=$OFFLINE_ZPHASE_DIM"
 echo "[hfrvla-train] wandb_enable=$WANDB_ENABLE"
 echo "[hfrvla-train] tmp_root=$HFRVLA_TMP_ROOT"
@@ -224,6 +227,9 @@ echo "[hfrvla-train] tmpdir=$TMPDIR"
   --policy.curriculum_joint_steps="$JOINT_STEPS" \
   --policy.curriculum_refine_steps="$REFINE_STEPS" \
   --policy.loss_delta_target_clip="$LOSS_DELTA_TARGET_CLIP" \
+  --policy.residual_merge_mode="$RESIDUAL_MERGE_MODE" \
+  --policy.a2c2_alpha="$A2C2_ALPHA" \
+  --policy.a2c2_use_latent_context="$A2C2_USE_LATENT_CONTEXT" \
   --policy.use_stage_b_objective="$USE_STAGE_B" \
   --policy.loss_lambda_gate="$LOSS_LAMBDA_GATE" \
   --policy.gate_improvement_margin="$GATE_IMPROVEMENT_MARGIN" \

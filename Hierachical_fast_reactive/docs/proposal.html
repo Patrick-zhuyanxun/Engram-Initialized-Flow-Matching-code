@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hierarchical Fast-Reactive VLA — Research Proposal</title>
+<style>
+  :root {
+    --blue:   #2563eb;
+    --green:  #16a34a;
+    --orange: #ea580c;
+    --purple: #7c3aed;
+    --gray:   #6b7280;
+    --bg:     #f9fafb;
+    --card:   #ffffff;
+    --border: #e5e7eb;
+    --text:   #111827;
+    --muted:  #6b7280;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.65;
+  }
+
+  /* ── Header ── */
+  header {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 60%, #2563eb 100%);
+    color: #fff;
+    padding: 56px 40px 48px;
+    text-align: center;
+  }
+  header .tag {
+    display: inline-block;
+    background: rgba(255,255,255,.18);
+    border: 1px solid rgba(255,255,255,.35);
+    border-radius: 20px;
+    font-size: 12px;
+    letter-spacing: .08em;
+    padding: 4px 14px;
+    margin-bottom: 20px;
+    text-transform: uppercase;
+  }
+  header h1 { font-size: 2rem; font-weight: 700; margin-bottom: 12px; }
+  header h2 { font-size: 1.05rem; font-weight: 400; opacity: .85; max-width: 680px; margin: 0 auto 28px; }
+  .meta-row { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; font-size: .85rem; opacity: .75; }
+  .meta-row span::before { margin-right: 5px; }
+
+  /* ── Layout ── */
+  main { max-width: 960px; margin: 0 auto; padding: 48px 24px 80px; }
+  section { margin-bottom: 52px; }
+  h3 {
+    font-size: 1.25rem; font-weight: 700;
+    color: var(--blue);
+    border-left: 4px solid var(--blue);
+    padding-left: 12px;
+    margin-bottom: 20px;
+  }
+  h4 { font-size: 1rem; font-weight: 600; margin: 16px 0 8px; }
+  p { margin-bottom: 12px; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  }
+  .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px) { .card-grid { grid-template-columns: 1fr; } }
+
+  /* ── Problem highlight box ── */
+  .problem-box {
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 20px 0;
+  }
+  .problem-box .label {
+    font-size: .75rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .08em; color: #92400e; margin-bottom: 6px;
+  }
+  .problem-box p { color: #78350f; margin: 0; font-weight: 500; }
+
+  /* ── Architecture SVG area ── */
+  .arch-wrap {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 24px;
+    overflow-x: auto;
+  }
+  svg text { font-family: 'Segoe UI', system-ui, sans-serif; }
+
+  /* ── Equation ── */
+  .equation {
+    background: #f1f5f9;
+    border-left: 3px solid var(--purple);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 20px;
+    font-family: 'Courier New', monospace;
+    font-size: .95rem;
+    margin: 12px 0;
+    color: #1e1b4b;
+  }
+
+  /* ── Comparison table ── */
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  thead th {
+    background: #1e3a8a; color: #fff;
+    padding: 10px 14px; text-align: left; font-weight: 600;
+  }
+  tbody tr:nth-child(even) { background: #f8fafc; }
+  tbody td { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .check { color: var(--green); font-weight: 700; }
+  .cross { color: #dc2626; }
+  .partial { color: var(--orange); }
+
+  /* ── Badge pills ── */
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .badge {
+    display: inline-block; border-radius: 20px;
+    font-size: .78rem; padding: 3px 12px; font-weight: 600;
+  }
+  .badge-blue   { background: #dbeafe; color: #1e40af; }
+  .badge-green  { background: #dcfce7; color: #15803d; }
+  .badge-orange { background: #ffedd5; color: #9a3412; }
+  .badge-purple { background: #ede9fe; color: #5b21b6; }
+  .badge-gray   { background: #f3f4f6; color: #374151; }
+
+  /* ── Experiment plan ── */
+  .exp-row {
+    display: grid; grid-template-columns: 28px 1fr auto;
+    align-items: start; gap: 12px;
+    padding: 14px 0; border-bottom: 1px solid var(--border);
+  }
+  .exp-num {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--blue); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .8rem; font-weight: 700; flex-shrink: 0; margin-top: 2px;
+  }
+  .exp-tag {
+    font-size: .75rem; padding: 2px 10px; border-radius: 12px;
+    font-weight: 600; white-space: nowrap; align-self: start; margin-top: 3px;
+  }
+  .tag-core    { background: #fee2e2; color: #991b1b; }
+  .tag-ablate  { background: #dbeafe; color: #1d4ed8; }
+  .tag-bonus   { background: #dcfce7; color: #166534; }
+
+  /* ── Timeline ── */
+  .timeline { position: relative; padding-left: 28px; }
+  .timeline::before {
+    content: ''; position: absolute; left: 7px; top: 8px; bottom: 8px;
+    width: 2px; background: var(--border);
+  }
+  .tl-item { position: relative; margin-bottom: 20px; }
+  .tl-dot {
+    position: absolute; left: -28px; top: 4px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--blue); border: 2px solid #fff;
+    box-shadow: 0 0 0 2px var(--blue);
+  }
+  .tl-title { font-weight: 600; font-size: .95rem; }
+  .tl-desc  { font-size: .85rem; color: var(--muted); margin-top: 2px; }
+
+  /* ── Contribution list ── */
+  .contrib-item {
+    display: flex; gap: 14px; align-items: flex-start;
+    padding: 16px 0; border-bottom: 1px solid var(--border);
+  }
+  .contrib-icon {
+    width: 36px; height: 36px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.1rem; flex-shrink: 0;
+  }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center; padding: 32px;
+    font-size: .82rem; color: var(--muted);
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HEADER ═══════════ -->
+<header>
+  <div class="tag">Research Proposal · IROS / ICRA Target</div>
+  <h1>Hierarchical Fast-Reactive VLA</h1>
+  <h2>Wrist-Camera-Based High-Frequency Residual Correction<br>for Closed-Loop Robot Manipulation</h2>
+  <div class="meta-row">
+    <span>📁 Hierachical_fast_reactive</span>
+    <span>🧪 LIBERO Benchmark</span>
+    <span>🤖 SmolVLA + GRU Residual</span>
+    <span>📅 2026-05-11</span>
+  </div>
+</header>
+
+<main>
+
+<!-- ═══════════ 1. PROBLEM STATEMENT ═══════════ -->
+<section>
+  <h3>1. Problem Statement</h3>
+
+  <p>
+    現代 Vision-Language-Action (VLA) 模型透過 <strong>action chunking</strong>
+    產生一段未來動作序列後，機械臂在執行這段 chunk 的過程中完全處於
+    <strong>開迴路（open-loop）</strong> 狀態——即使環境發生擾動、抓取位置偏移，
+    系統也無法即時修正，直到下一個 chunk 才能重新感知。
+  </p>
+
+  <div class="problem-box">
+    <div class="label">Core Pain Point</div>
+    <p>
+      VLA 的 action chunk 執行期間缺乏內生的高頻回授機制（endogenous high-frequency feedback）。
+      即使加快 chunk 更新頻率，若沒有持續閉環修正，failure recovery 的成本仍會抵消速度增益。
+    </p>
+  </div>
+
+  <div class="card-grid">
+    <div class="card">
+      <h4>現象</h4>
+      <ul style="padding-left:18px; font-size:.9rem;">
+        <li>抓取物體時因輕微位置偏移而失敗</li>
+        <li>外力擾動後無法自行恢復</li>
+        <li>末端執行器在接近階段產生誤差累積</li>
+        <li>重試率高，整體任務成功率下降</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>文獻確認（2024–2026）</h4>
+      <ul style="padding-left:18px; font-size:.9rem;">
+        <li>Yell At Your Robot（RSS 2024）：外部修正是長任務成功的關鍵</li>
+        <li>Realtime-VLA V2（arXiv:2603.26360）：failure recovery 抵消速度增益</li>
+        <li>RoboFAC（arXiv:2505.12224）：VLA 缺乏 failure-centric supervision</li>
+        <li>RL-for-VLA：compounding errors 在 distribution shift 下惡化</li>
+      </ul>
+    </div>
+  </div>
+
+  <p style="margin-top:8px;">
+    文獻綜述（2024–2026 年 VLA 生物啟發式運動控制分析）將「<strong>內生誤差驅動適應機制的缺失</strong>」
+    列為當前 VLA 長時程穩健行為的 <strong>第一大瓶頸</strong>。
+  </p>
+</section>
+
+<!-- ═══════════ 2. PRIOR WORK GAP ═══════════ -->
+<section>
+  <h3>2. Prior Work &amp; Research Gap</h3>
+
+  <div class="card" style="overflow-x:auto; padding:0;">
+    <table>
+      <thead>
+        <tr>
+          <th>方法</th>
+          <th>高頻閉環</th>
+          <th>視覺回授</th>
+          <th>語意感知</th>
+          <th>通用硬體</th>
+          <th>Confidence Gate</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>SmolVLA / OpenVLA</strong><br><span style="font-size:.8rem;color:#6b7280;">端到端 VLA</span></td>
+          <td class="cross">✗</td>
+          <td class="cross">✗</td>
+          <td class="check">✓</td>
+          <td class="check">✓</td>
+          <td class="cross">✗</td>
+        </tr>
+        <tr>
+          <td><strong>Reactive Diffusion Policy</strong><br><span style="font-size:.8rem;color:#6b7280;">arXiv:2503.02881</span></td>
+          <td class="check">✓</td>
+          <td class="cross">✗ 觸覺</td>
+          <td class="partial">△</td>
+          <td class="cross">✗ 特殊感測器</td>
+          <td class="cross">✗</td>
+        </tr>
+        <tr>
+          <td><strong>AdaWorldPolicy</strong><br><span style="font-size:.8rem;color:#6b7280;">arXiv:2602.20057</span></td>
+          <td class="check">✓</td>
+          <td class="check">✓</td>
+          <td class="check">✓</td>
+          <td class="partial">△ 需 World Model</td>
+          <td class="cross">✗</td>
+        </tr>
+        <tr>
+          <td><strong>Hi Robot</strong><br><span style="font-size:.8rem;color:#6b7280;">ICML 2025</span></td>
+          <td class="partial">△</td>
+          <td class="cross">✗</td>
+          <td class="check">✓</td>
+          <td class="check">✓</td>
+          <td class="cross">✗</td>
+        </tr>
+        <tr style="background:#eff6ff;">
+          <td><strong>Ours (HFRVLA)</strong><br><span style="font-size:.8rem;color:#1d4ed8;">本研究</span></td>
+          <td class="check">✓ 30–60 Hz</td>
+          <td class="check">✓ Wrist Cam</td>
+          <td class="check">✓ h_task</td>
+          <td class="check">✓ 普通腕部相機</td>
+          <td class="check">✓</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p style="margin-top:16px;">
+    <strong>Research Gap</strong>：目前沒有工作同時滿足「高頻視覺閉環 ＋ 語意感知 ＋ 通用硬體 ＋ 可插拔設計」。
+    Reactive Diffusion Policy 最接近，但需要觸覺感測器；AdaWorldPolicy 最完整，但需要 World Model。
+    本研究填補的是：<em>只用機械臂已有的 wrist camera，就能做到語意感知的高頻殘差修正</em>。
+  </p>
+</section>
+
+<!-- ═══════════ 3. PROPOSED SOLUTION ═══════════ -->
+<section>
+  <h3>3. Proposed Solution — HFRVLA</h3>
+  <p style="margin-bottom:20px;">
+    <strong>Hierarchical Fast-Reactive VLA (HFRVLA)</strong>：在凍結的 Slow VLA 之上，
+    疊加一個以 wrist camera 為核心輸入的輕量 Fast Reactive Module，
+    以 30–60 Hz 高頻輸出殘差修正量，並透過 confidence gate 控制修正強度。
+  </p>
+
+  <!-- Architecture SVG -->
+  <div class="arch-wrap">
+    <svg viewBox="0 0 860 440" width="100%" style="min-width:640px;">
+      <!-- background lanes -->
+      <rect x="10" y="10" width="840" height="175" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+      <rect x="10" y="200" width="840" height="175" rx="10" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5"/>
+      <rect x="10" y="390" width="840" height="40" rx="10" fill="#faf5ff" stroke="#e9d5ff" stroke-width="1.5"/>
+
+      <!-- lane labels -->
+      <text x="22" y="30" font-size="11" font-weight="600" fill="#1d4ed8">System 2 — Slow VLA  (chunk level, ~10 Hz)</text>
+      <text x="22" y="220" font-size="11" font-weight="600" fill="#15803d">System 1 — Fast Reactive Module  (30–60 Hz)</text>
+      <text x="22" y="408" font-size="11" font-weight="600" fill="#6d28d9">Coupling Layer</text>
+
+      <!-- ── System 2 boxes ── -->
+      <!-- Input box -->
+      <rect x="30" y="42" width="145" height="130" rx="8" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+      <text x="102" y="64" text-anchor="middle" font-size="10" font-weight="700" fill="#1d4ed8">Inputs</text>
+      <text x="102" y="82" text-anchor="middle" font-size="9" fill="#1e40af">Task Instruction</text>
+      <text x="102" y="96" text-anchor="middle" font-size="9" fill="#1e40af">Global Obs</text>
+      <text x="102" y="110" text-anchor="middle" font-size="9" fill="#1e40af">Wrist Camera Frames</text>
+      <text x="102" y="124" text-anchor="middle" font-size="9" fill="#1e40af">Robot State</text>
+      <text x="102" y="138" text-anchor="middle" font-size="9" fill="#1e40af">Expert Demos</text>
+
+      <!-- SmolVLA box -->
+      <rect x="215" y="55" width="145" height="104" rx="8" fill="#2563eb" stroke="#1d4ed8" stroke-width="1.5"/>
+      <text x="287" y="82" text-anchor="middle" font-size="11" font-weight="700" fill="white">SmolVLA</text>
+      <text x="287" y="100" text-anchor="middle" font-size="9" fill="#bfdbfe">(VLM + Action Head)</text>
+      <text x="287" y="116" text-anchor="middle" font-size="9" fill="#bfdbfe">FROZEN ❄️</text>
+      <text x="287" y="132" text-anchor="middle" font-size="9" fill="#bfdbfe">extracts h_task</text>
+
+      <!-- arrow: inputs -> smolvla -->
+      <line x1="175" y1="107" x2="213" y2="107" stroke="#3b82f6" stroke-width="1.8" marker-end="url(#arr-blue)"/>
+
+      <!-- A_slow box -->
+      <rect x="400" y="62" width="120" height="90" rx="8" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1.5"/>
+      <text x="460" y="84" text-anchor="middle" font-size="10" font-weight="700" fill="#1e3a8a">A_slow</text>
+      <text x="460" y="100" text-anchor="middle" font-size="9" fill="#1e3a8a">[a_t … a_{t+H}]</text>
+      <text x="460" y="116" text-anchor="middle" font-size="9" fill="#1e3a8a">~10 Hz chunk</text>
+
+      <!-- h_task box -->
+      <rect x="400" y="115" width="120" height="50" rx="8" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <text x="460" y="135" text-anchor="middle" font-size="10" font-weight="600" fill="#0369a1">h_task</text>
+      <text x="460" y="152" text-anchor="middle" font-size="9" fill="#0369a1">VLM feature (detach)</text>
+
+      <!-- arrows: smolvla -> outputs -->
+      <line x1="360" y1="97" x2="398" y2="97" stroke="#3b82f6" stroke-width="1.8" marker-end="url(#arr-blue)"/>
+      <line x1="360" y1="107" x2="370" y2="107" stroke="#0ea5e9" stroke-width="1.5"/>
+      <line x1="370" y1="107" x2="370" y2="140" stroke="#0ea5e9" stroke-width="1.5"/>
+      <line x1="370" y1="140" x2="398" y2="140" stroke="#0ea5e9" stroke-width="1.5" marker-end="url(#arr-sky)"/>
+
+      <!-- ── System 1 boxes ── -->
+      <!-- Wrist inputs -->
+      <rect x="30" y="215" width="145" height="130" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+      <text x="102" y="237" text-anchor="middle" font-size="10" font-weight="700" fill="#15803d">Fast Inputs</text>
+      <text x="102" y="255" text-anchor="middle" font-size="9" fill="#14532d">Wrist Frames (30–60 Hz)</text>
+      <text x="102" y="269" text-anchor="middle" font-size="9" fill="#14532d">DINO Local Features</text>
+      <text x="102" y="283" text-anchor="middle" font-size="9" fill="#14532d">Robot State</text>
+      <text x="102" y="297" text-anchor="middle" font-size="9" fill="#14532d">a_slow (current step)</text>
+      <text x="102" y="311" text-anchor="middle" font-size="9" fill="#14532d">h_task (from S2) ←</text>
+
+      <!-- GRU box -->
+      <rect x="215" y="228" width="145" height="104" rx="8" fill="#16a34a" stroke="#15803d" stroke-width="1.5"/>
+      <text x="287" y="255" text-anchor="middle" font-size="11" font-weight="700" fill="white">GRU Residual</text>
+      <text x="287" y="273" text-anchor="middle" font-size="9" fill="#bbf7d0">Fast Reactive Module</text>
+      <text x="287" y="289" text-anchor="middle" font-size="9" fill="#bbf7d0">TRAINABLE 🔥</text>
+      <text x="287" y="305" text-anchor="middle" font-size="9" fill="#bbf7d0">O(1) inference/step</text>
+
+      <!-- arrow: fast inputs -> GRU -->
+      <line x1="175" y1="280" x2="213" y2="280" stroke="#16a34a" stroke-width="1.8" marker-end="url(#arr-green)"/>
+
+      <!-- δa + gate box -->
+      <rect x="400" y="228" width="120" height="104" rx="8" fill="#bbf7d0" stroke="#16a34a" stroke-width="1.5"/>
+      <text x="460" y="254" text-anchor="middle" font-size="10" font-weight="700" fill="#14532d">Output</text>
+      <text x="460" y="272" text-anchor="middle" font-size="9" fill="#14532d">δa_t  (residual)</text>
+      <text x="460" y="290" text-anchor="middle" font-size="9" fill="#14532d">g_t   (gate 0–1)</text>
+      <text x="460" y="310" text-anchor="middle" font-size="9" fill="#14532d">30–60 Hz</text>
+
+      <!-- arrow: GRU -> output -->
+      <line x1="360" y1="280" x2="398" y2="280" stroke="#16a34a" stroke-width="1.8" marker-end="url(#arr-green)"/>
+
+      <!-- h_task vertical connector S2→S1 -->
+      <line x1="460" y1="165" x2="460" y2="200" stroke="#0ea5e9" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <line x1="460" y1="200" x2="182" y2="200" stroke="#0ea5e9" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <line x1="182" y1="200" x2="182" y2="311" stroke="#0ea5e9" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr-sky)"/>
+
+      <!-- ── Coupling Layer ── -->
+      <rect x="560" y="65" width="155" height="130" rx="8" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5"/>
+      <text x="637" y="88" text-anchor="middle" font-size="10" font-weight="700" fill="#5b21b6">Coupling Layer</text>
+      <text x="637" y="106" text-anchor="middle" font-size="9" fill="#4c1d95">action blending</text>
+      <text x="637" y="120" text-anchor="middle" font-size="9" fill="#4c1d95">residual clipping</text>
+      <text x="637" y="134" text-anchor="middle" font-size="9" fill="#4c1d95">confidence gating</text>
+      <text x="637" y="152" text-anchor="middle" font-size="10" font-weight="700" fill="#5b21b6">a_final = a_slow</text>
+      <text x="637" y="168" text-anchor="middle" font-size="10" font-weight="700" fill="#5b21b6">+ g·clip(δa)</text>
+
+      <!-- arrows → coupling -->
+      <line x1="520" y1="97" x2="558" y2="115" stroke="#3b82f6" stroke-width="1.8" marker-end="url(#arr-purple)"/>
+      <line x1="520" y1="280" x2="540" y2="280" stroke="#16a34a" stroke-width="1.8"/>
+      <line x1="540" y1="280" x2="540" y2="160" stroke="#16a34a" stroke-width="1.8"/>
+      <line x1="540" y1="160" x2="558" y2="148" stroke="#16a34a" stroke-width="1.8" marker-end="url(#arr-purple)"/>
+
+      <!-- Robot controller -->
+      <rect x="755" y="95" width="95" height="100" rx="8" fill="#4c1d95" stroke="#5b21b6" stroke-width="1.5"/>
+      <text x="802" y="125" text-anchor="middle" font-size="10" font-weight="700" fill="white">Robot</text>
+      <text x="802" y="141" text-anchor="middle" font-size="10" font-weight="700" fill="white">Controller</text>
+      <text x="802" y="162" text-anchor="middle" font-size="9" fill="#e9d5ff">a_final →</text>
+      <text x="802" y="178" text-anchor="middle" font-size="9" fill="#e9d5ff">execute</text>
+
+      <!-- coupling → robot -->
+      <line x1="715" y1="130" x2="753" y2="145" stroke="#7c3aed" stroke-width="2" marker-end="url(#arr-purple2)"/>
+
+      <!-- feedback loop -->
+      <path d="M 802 195 Q 802 390 460 410 Q 102 390 102 345" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#arr-gray)"/>
+      <text x="460" y="432" text-anchor="middle" font-size="9" fill="#64748b">wrist camera feedback (30–60 Hz)</text>
+
+      <!-- Defs: arrowheads -->
+      <defs>
+        <marker id="arr-blue"   markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#3b82f6"/></marker>
+        <marker id="arr-green"  markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#16a34a"/></marker>
+        <marker id="arr-sky"    markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#0ea5e9"/></marker>
+        <marker id="arr-purple" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#7c3aed"/></marker>
+        <marker id="arr-purple2"markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#7c3aed"/></marker>
+        <marker id="arr-gray"   markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#94a3b8"/></marker>
+      </defs>
+    </svg>
+  </div>
+
+  <!-- Key equations -->
+  <div style="margin-top:24px;">
+    <h4>核心公式</h4>
+    <div class="equation">a_final(t) = a_slow(t)  +  g_t · clip(δa_t, -δ_max, +δ_max)</div>
+    <div class="equation">δa_t, g_t  = GRU( φ_wrist(I_t),  s_t,  a_slow(t),  h_task )
+h_task     = VLM_encoder( instruction, global_obs )   ← frozen, detach()</div>
+  </div>
+</section>
+
+<!-- ═══════════ 4. KEY DESIGN DECISIONS ═══════════ -->
+<section>
+  <h3>4. Key Design Decisions</h3>
+  <div class="card-grid">
+    <div class="card">
+      <h4>System 1 Backbone：GRU</h4>
+      <p style="font-size:.9rem;">30–60 Hz 串流推論需要 O(1) per-step 成本。GRU 隱藏狀態作為滑動時間視窗（10 steps = 167 ms），無需批次計算，可直接 ONNX/TensorRT 部署。Mamba 工程開銷過大，不適合第一篇論文。</p>
+      <div class="badges">
+        <span class="badge badge-green">低延遲</span>
+        <span class="badge badge-blue">易部署</span>
+        <span class="badge badge-gray">訓練穩定</span>
+      </div>
+    </div>
+    <div class="card">
+      <h4>訓練訊號：Offline Decomposition → Joint Fine-tune</h4>
+      <p style="font-size:.9rem;"><strong>Phase 1</strong>：Freeze SmolVLA，計算 δa = a_expert − a_slow 作為監督訊號，訓練 GRU residual 至收斂。<strong>Phase 2</strong>：Joint fine-tune slow + fast，讓特徵更協同。禁止直接監督 a_final（Option C），否則 gate 失去語意。</p>
+      <div class="badges">
+        <span class="badge badge-orange">Phase 1 穩定</span>
+        <span class="badge badge-purple">Phase 2 提升</span>
+      </div>
+    </div>
+    <div class="card">
+      <h4>Semantic-Aware Residual</h4>
+      <p style="font-size:.9rem;">System 1 以 h_task（SmolVLA VLM encoder 的 cross-attention fused feature）作為 task conditioning。這使殘差修正具語意感知——知道要抓什麼，才能決定如何修正，而非盲目視覺伺服。</p>
+      <div class="badges">
+        <span class="badge badge-blue">語意感知</span>
+        <span class="badge badge-green">可解釋</span>
+      </div>
+    </div>
+    <div class="card">
+      <h4>Confidence Gate g_t</h4>
+      <p style="font-size:.9rem;">g_t ∈ [0,1] 學習何時要修正（接近物體、接觸前）、何時讓 System 2 主導（穩定移動段）。這是與 Reactive Diffusion Policy 的關鍵架構差異，防止 System 1 在穩定執行期間過度修正。</p>
+      <div class="badges">
+        <span class="badge badge-purple">可消融測試</span>
+        <span class="badge badge-orange">防過修正</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ 5. CONTRIBUTIONS ═══════════ -->
+<section>
+  <h3>5. 論文貢獻</h3>
+  <div class="card" style="padding:8px 24px;">
+    <div class="contrib-item">
+      <div class="contrib-icon" style="background:#dbeafe;">🔌</div>
+      <div>
+        <strong>可插拔設計（Plug-in）</strong>
+        <p style="font-size:.9rem;margin-top:4px;">不替代 VLA，不修改 SmolVLA 權重。可附加到任意 action-chunking VLA 上，降低採用門檻。</p>
+      </div>
+    </div>
+    <div class="contrib-item">
+      <div class="contrib-icon" style="background:#dcfce7;">📷</div>
+      <div>
+        <strong>視覺充分性（Vision-Sufficiency）</strong>
+        <p style="font-size:.9rem;margin-top:4px;">僅使用機械臂已有的 wrist camera（不需觸覺、力矩感測器），即可達到高頻閉環修正。降低硬體門檻，提高可部署性。</p>
+      </div>
+    </div>
+    <div class="contrib-item">
+      <div class="contrib-icon" style="background:#ede9fe;">🧠</div>
+      <div>
+        <strong>語意感知殘差（Semantic-Aware Residual）</strong>
+        <p style="font-size:.9rem;margin-top:4px;">透過 h_task conditioning，System 1 在修正動作時保有對任務目標的理解，而非純粹最小化視覺誤差。</p>
+      </div>
+    </div>
+    <div class="contrib-item" style="border:none;">
+      <div class="contrib-icon" style="background:#ffedd5;">🎛️</div>
+      <div>
+        <strong>Confidence Gating</strong>
+        <p style="font-size:.9rem;margin-top:4px;">自適應控制 System 1 修正強度，在穩定段讓 System 2 主導，在接觸前啟動高頻修正。可透過消融實驗直接驗證。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ 6. EXPERIMENT PLAN ═══════════ -->
+<section>
+  <h3>6. Experiment Plan（LIBERO，IROS/ICRA 規模）</h3>
+
+  <div class="card">
+    <div class="exp-row">
+      <div class="exp-num">1</div>
+      <div>
+        <strong>Main Result：SmolVLA alone vs. HFRVLA</strong>
+        <div style="font-size:.85rem;color:#6b7280;margin-top:4px;">
+          LIBERO-Spatial + LIBERO-Goal 兩套件，各 10 tasks × 20 episodes。
+          主要指標：task success rate (%)。期望 +10–20% 提升。
+        </div>
+      </div>
+      <div class="exp-tag tag-core">Core</div>
+    </div>
+    <div class="exp-row">
+      <div class="exp-num">2</div>
+      <div>
+        <strong>Perturbation Recovery Test</strong>
+        <div style="font-size:.85rem;color:#6b7280;margin-top:4px;">
+          在 chunk 執行中途施加外力擾動（平移 ±2cm），測量恢復成功率與恢復時間。
+          這是最具說服力的實驗——審稿人無法以「只是調參」否定。
+        </div>
+      </div>
+      <div class="exp-tag tag-core">Core</div>
+    </div>
+    <div class="exp-row">
+      <div class="exp-num">3</div>
+      <div>
+        <strong>Ablation：Gate Disabled (g=1)</strong>
+        <div style="font-size:.85rem;color:#6b7280;margin-top:4px;">
+          移除 confidence gate，固定 g=1（總是修正）。
+          預期在精確抓取任務上因過度修正而性能下降，驗證 gate 的必要性。
+        </div>
+      </div>
+      <div class="exp-tag tag-ablate">Ablation</div>
+    </div>
+    <div class="exp-row">
+      <div class="exp-num">4</div>
+      <div>
+        <strong>Ablation：w/o h_task Conditioning</strong>
+        <div style="font-size:.85rem;color:#6b7280;margin-top:4px;">
+          移除 VLM 語意特徵輸入，System 1 僅使用 wrist visual + robot state。
+          驗證語意感知對殘差品質的貢獻。
+        </div>
+      </div>
+      <div class="exp-tag tag-ablate">Ablation</div>
+    </div>
+    <div class="exp-row" style="border:none;">
+      <div class="exp-num">5</div>
+      <div>
+        <strong>Baseline 比較：固定頻率 chunk 更新 (VLA + fast chunk refresh)</strong>
+        <div style="font-size:.85rem;color:#6b7280;margin-top:4px;">
+          對比「提高 SmolVLA 更新頻率」而不加 residual module 的方案，
+          顯示殘差修正比單純加快 chunk refresh 更有效且計算成本更低。
+        </div>
+      </div>
+      <div class="exp-tag tag-bonus">Bonus</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ 7. TIMELINE ═══════════ -->
+<section>
+  <h3>7. 預計時程（目標：IROS / ICRA）</h3>
+  <div class="card">
+    <div class="timeline">
+      <div class="tl-item">
+        <div class="tl-dot" style="background:#f59e0b;box-shadow:0 0 0 2px #f59e0b;"></div>
+        <div class="tl-title">Month 1–2｜Infrastructure</div>
+        <div class="tl-desc">SmolVLA forward pass hook（取出 h_task），GRU residual module 實作，offline δa 計算 pipeline，LIBERO 環境整合</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot" style="background:#3b82f6;box-shadow:0 0 0 2px #3b82f6;"></div>
+        <div class="tl-title">Month 3｜Phase 1 Training</div>
+        <div class="tl-desc">Offline decomposition 訓練 GRU residual，LIBERO-Spatial 初步驗證，確認 δa 收斂與 gate 行為合理</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot" style="background:#16a34a;box-shadow:0 0 0 2px #16a34a;"></div>
+        <div class="tl-title">Month 4｜Core Experiments</div>
+        <div class="tl-desc">Main result + Perturbation test + 兩個消融實驗，整理數據表格，初步確認投稿 story</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot" style="background:#7c3aed;box-shadow:0 0 0 2px #7c3aed;"></div>
+        <div class="tl-title">Month 5｜Phase 2 + Polish</div>
+        <div class="tl-desc">Joint fine-tune（選擇性），LIBERO-Goal 驗證，bonus baseline，figure 製作</div>
+      </div>
+      <div class="tl-item" style="margin-bottom:0;">
+        <div class="tl-dot" style="background:#dc2626;box-shadow:0 0 0 2px #dc2626;"></div>
+        <div class="tl-title">Month 6｜Paper Writing</div>
+        <div class="tl-desc">Tectonic 論文撰寫，reviewer defense 準備，投稿</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ 8. NOVELTY DEFENSE ═══════════ -->
+<section>
+  <h3>8. Reviewer Defense</h3>
+  <div class="card-grid">
+    <div class="card" style="border-left:3px solid #dc2626;">
+      <h4 style="color:#dc2626;">Q：這只是 Reactive Diffusion Policy 換感測器？</h4>
+      <p style="font-size:.9rem;">
+        RDP 需要觸覺感測器（特殊硬體，多數機械臂沒有）。我們的貢獻是：
+        <strong>普通 wrist camera 已足夠做高頻閉環修正</strong>，改變部署門檻，
+        不是感測器替換。此外，RDP 沒有 confidence gate——我們的 g_t 是獨立的可測試設計。
+      </p>
+    </div>
+    <div class="card" style="border-left:3px solid #dc2626;">
+      <h4 style="color:#dc2626;">Q：跟 Hi Robot 的分層有何差異？</h4>
+      <p style="font-size:.9rem;">
+        Hi Robot 的 System 1 沒有視覺閉環，它的「快」只是更快地輸出動作，
+        而非持續感知修正。我們的 System 1 以 30–60 Hz 真正做<strong>觀測驅動的殘差修正</strong>，
+        屬於 motor-level hierarchy 而非 planning-level hierarchy。
+      </p>
+    </div>
+    <div class="card" style="border-left:3px solid #dc2626;">
+      <h4 style="color:#dc2626;">Q：pure 視覺伺服（visual servoing）就夠了？</h4>
+      <p style="font-size:.9rem;">
+        純視覺伺服不具語意感知，無法知道要抓哪個物體。
+        我們的 h_task conditioning 讓 System 1 在多物體場景中仍能做出正確的方向性修正。
+      </p>
+    </div>
+    <div class="card" style="border-left:3px solid #dc2626;">
+      <h4 style="color:#dc2626;">Q：模擬結果能泛化到真機嗎？</h4>
+      <p style="font-size:.9rem;">
+        IROS/ICRA 接受純模擬結果（LIBERO 為 accepted benchmark）。
+        論文中可說明 sim-to-real 的主要挑戰在 wrist camera 影像品質，
+        並以 plug-in 設計作為未來真機驗證的基礎。
+      </p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  Hierarchical Fast-Reactive VLA — Research Proposal &nbsp;·&nbsp;
+  <em>Hierachical_fast_reactive / docs / proposal.html</em> &nbsp;·&nbsp;
+  Generated 2026-05-11
+</footer>
+
+</body>
+</html>

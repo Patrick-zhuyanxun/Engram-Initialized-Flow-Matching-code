@@ -149,7 +149,6 @@ def build_fast_cache(
     source_root: str | Path,
     cache_root: str | Path,
     *,
-    seq_len: int,
     correct_quantile: float = 0.80,
     preserve_quantile: float = 0.50,
     static_y_preserve: bool = False,
@@ -230,7 +229,6 @@ def build_fast_cache(
         "total_frames": expected,
         "total_episodes": int(info["total_episodes"]),
         "fps": int(info["fps"]),
-        "seq_len": int(seq_len),
         "features": features,
         "index_arrays": index_features,
         "static_label_quantiles": {
@@ -255,7 +253,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--cache-root", type=Path, required=True)
-    parser.add_argument("--seq-len", type=int, default=4)
     parser.add_argument("--correct-quantile", type=float, default=0.80)
     parser.add_argument("--preserve-quantile", type=float, default=0.50)
     parser.add_argument(
@@ -272,7 +269,6 @@ def main() -> None:
     build_fast_cache(
         args.source_root,
         args.cache_root,
-        seq_len=args.seq_len,
         correct_quantile=args.correct_quantile,
         preserve_quantile=args.preserve_quantile,
         static_y_preserve=args.static_y_preserve,

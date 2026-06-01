@@ -1,0 +1,3 @@
+[doc]
+name = "main"
+src_entrypoint = "src/main.tex"

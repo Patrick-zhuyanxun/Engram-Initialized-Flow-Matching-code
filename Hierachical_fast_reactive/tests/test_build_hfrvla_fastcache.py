@@ -97,10 +97,11 @@ def test_build_fast_cache_writes_float16_large_arrays(tmp_path):
     cache = tmp_path / "cache"
     _write_source(source)
 
-    build_fast_cache(source, cache, seq_len=3)
+    build_fast_cache(source, cache)
 
     meta = json.loads((cache / "meta.json").read_text())
     assert meta["schema_version"] == 2
+    assert "seq_len" not in meta
     assert meta["total_frames"] == 4
     assert np.load(cache / "episode_starts.npy").tolist() == [0, 2]
     assert np.load(cache / "episode_ends.npy").tolist() == [2, 4]
@@ -122,7 +123,7 @@ def test_build_fast_cache_static_y_preserve_marks_all_frames_preserve(tmp_path):
     cache = tmp_path / "cache"
     _write_source(source)
 
-    build_fast_cache(source, cache, seq_len=3, static_y_preserve=True)
+    build_fast_cache(source, cache, static_y_preserve=True)
 
     meta = json.loads((cache / "meta.json").read_text())
     assert meta["static_label_mode"] == "static_y_preserve"

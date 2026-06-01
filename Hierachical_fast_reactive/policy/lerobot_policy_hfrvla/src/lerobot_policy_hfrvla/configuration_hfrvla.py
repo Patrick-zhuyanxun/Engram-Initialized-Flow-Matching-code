@@ -85,6 +85,18 @@ class HFRVLAConfig(SmolVLAConfig):
     focal_pos_weight: float = 4.0
     gate_task_budget: float = 0.25
 
+    # ── Fast Wrist Residual path ──
+    # "gated" preserves the original HFRVLA Stage A/B/C path.
+    # "fast_wrist" uses a stateless feed-forward correction head and merges
+    # actions as a_base + fast_residual_alpha * clip(delta_a), without
+    # gate/contact/GRU.
+    residual_merge_mode: str = "gated"
+    fast_residual_alpha: float | None = None
+    fast_residual_use_latent_context: bool | None = None
+    # Deprecated aliases retained so old checkpoints/configs keep loading.
+    a2c2_alpha: float | None = None
+    a2c2_use_latent_context: bool | None = None
+
     # ── Curriculum (sprint-2 three-stage) ──
     # Stage 0 (Warmup): only L_delta, gate + contact heads frozen.
     # Stage 1 (Joint):  deployment-aligned delta/final/gate losses + contact.
@@ -93,7 +105,10 @@ class HFRVLAConfig(SmolVLAConfig):
     curriculum_joint_steps: int = 49000
     curriculum_refine_steps: int = 10000
 
-    # ── Sequence windowing for GRU ──
+    # ── Training-time sequence windowing ──
+    # Gated mode consumes the full window. Fast Wrist Residual mode requires
+    # seq_len >= 2 and uses only the previous/current pair for one-step
+    # conditioning.
     seq_len: int = 8
 
     # ── Offline fast-only training ──
@@ -133,6 +148,54 @@ class HFRVLAConfig(SmolVLAConfig):
 
     # ── Misc ──
     name: str = "hfrvla"
+
+    # ────────────────────────────────────────────────────────────────────
+    @staticmethod
+    def _coerce_bool(value: bool | str | None, *, default: bool) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"1", "true", "yes", "on"}:
+                return True
+            if lowered in {"0", "false", "no", "off"}:
+                return False
+        return bool(value)
+
+    def normalize_deprecated_aliases(self) -> None:
+        """Normalize deprecated A2C2 names to the public FWR config names."""
+        mode = str(getattr(self, "residual_merge_mode", "gated")).strip().lower()
+        if mode == "a2c2":
+            mode = "fast_wrist"
+        self.residual_merge_mode = mode
+
+        if self.fast_residual_alpha is None:
+            self.fast_residual_alpha = (
+                float(self.a2c2_alpha) if self.a2c2_alpha is not None else 1.0
+            )
+        else:
+            self.fast_residual_alpha = float(self.fast_residual_alpha)
+
+        if self.fast_residual_use_latent_context is None:
+            self.fast_residual_use_latent_context = self._coerce_bool(
+                self.a2c2_use_latent_context,
+                default=True,
+            )
+        else:
+            self.fast_residual_use_latent_context = self._coerce_bool(
+                self.fast_residual_use_latent_context,
+                default=True,
+            )
+
+        # Keep aliases readable and serialized for legacy checkpoints/scripts.
+        self.a2c2_alpha = self.fast_residual_alpha
+        self.a2c2_use_latent_context = self.fast_residual_use_latent_context
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.normalize_deprecated_aliases()
 
     # ────────────────────────────────────────────────────────────────────
     def validate_features(self) -> None:

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 import torch
 from torch.utils.data import DataLoader
 
@@ -133,6 +134,14 @@ def test_load_fast_cache_metadata_validates_required_arrays(tmp_path):
 
     assert metadata["total_frames"] == 6
     assert metadata["features"]["observation.extra.dino_patches"]["dtype"] == "float16"
+
+
+def test_fast_cache_dataset_requires_explicit_seq_len(tmp_path):
+    cache_root = tmp_path / "cache"
+    _write_cache(cache_root)
+
+    with pytest.raises(ValueError, match="seq_len must be provided"):
+        HFRVLAFastCacheDataset(cache_root)
 
 
 def test_fast_cache_dataset_clamps_window_at_episode_start(tmp_path):

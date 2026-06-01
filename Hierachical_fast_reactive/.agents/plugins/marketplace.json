@@ -1,0 +1,20 @@
+{
+  "name": "hfrvla-local",
+  "interface": {
+    "displayName": "HFRVLA Local Plugins"
+  },
+  "plugins": [
+    {
+      "name": "hfrvla-training-docs-hook",
+      "source": {
+        "source": "local",
+        "path": "./plugins/hfrvla-training-docs-hook"
+      },
+      "policy": {
+        "installation": "INSTALLED_BY_DEFAULT",
+        "authentication": "ON_USE"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
