@@ -1239,20 +1239,20 @@ type SuccessDatum = {
 };
 
 const actionStepComparison: SuccessDatum[] = [
-  { k: 2, hfrvla: 85, baseline: 82, hfrvlaText: '85/100', baselineText: '82/100' },
-  { k: 4, hfrvla: 83, baseline: 73, hfrvlaText: '83/100', baselineText: '73/100' },
-  { k: 8, hfrvla: 81, baseline: 77, hfrvlaText: '81/100', baselineText: '77/100' },
-  { k: 16, hfrvla: 74, baseline: 78, hfrvlaText: '74/100', baselineText: '78/100' },
-  { k: 32, hfrvla: 71, baseline: 73, hfrvlaText: '71/100', baselineText: '73/100' },
+  { k: 2, hfrvla: 82, baseline: 72, hfrvlaText: '41/50', baselineText: '36/50' },
+  { k: 4, hfrvla: 76, baseline: 62, hfrvlaText: '38/50', baselineText: '31/50' },
+  { k: 8, hfrvla: 68, baseline: 64, hfrvlaText: '34/50', baselineText: '32/50' },
+  { k: 16, hfrvla: 68, baseline: 68, hfrvlaText: '34/50', baselineText: '34/50' },
+  { k: 32, hfrvla: 52, baseline: 62, hfrvlaText: '26/50', baselineText: '31/50' },
 ];
 
 const matchedChunkComparison: SuccessDatum[] = [
-  { k: 2, hfrvla: 82, baseline: 76, hfrvlaText: '82/100', baselineText: '76/100' },
-  { k: 4, hfrvla: 78, baseline: 79, hfrvlaText: '78/100', baselineText: '79/100' },
-  { k: 8, hfrvla: 83, baseline: 74, hfrvlaText: '83/100', baselineText: '74/100' },
-  { k: 16, hfrvla: 80, baseline: 74, hfrvlaText: '80/100', baselineText: '74/100' },
-  { k: 32, hfrvla: 71, baseline: 67, hfrvlaText: '71/100', baselineText: '67/100' },
-  { k: 50, hfrvla: 46, baseline: 43, hfrvlaText: '46/100', baselineText: '43/100' },
+  { k: 2, hfrvla: 76, baseline: 66, hfrvlaText: '38/50', baselineText: '33/50' },
+  { k: 4, hfrvla: 62, baseline: 68, hfrvlaText: '31/50', baselineText: '34/50' },
+  { k: 8, hfrvla: 72, baseline: 58, hfrvlaText: '36/50', baselineText: '29/50' },
+  { k: 16, hfrvla: 64, baseline: 60, hfrvlaText: '32/50', baselineText: '30/50' },
+  { k: 32, hfrvla: 54, baseline: 52, hfrvlaText: '27/50', baselineText: '26/50' },
+  { k: 50, hfrvla: 44, baseline: 40, hfrvlaText: '22/50', baselineText: '20/50' },
 ];
 
 const signedPts = (value: number) => `${value >= 0 ? '+' : ''}${value} pts`;
@@ -1353,19 +1353,19 @@ const EvidenceSnapshot: Page = () => (
   <PageShell label="Evidence snapshot">
     <Heading maxWidth={1580}>穩定 evidence：保留 baseline 比較，不提前寫成 paper claim</Heading>
     <Note width={1500}>
-      這頁只摘要 registry-backed combined rows；完整成功率比較在後面兩張折線圖與表格。Paper 正文先保留方法大架構，等全部實驗完成後再寫細節主張。
+      這頁只摘要 registry-backed LIBERO-Spatial rows；完整成功率比較在後面兩張折線圖與表格。Paper 正文先保留方法大架構，等全部實驗完成後再寫細節主張。
     </Note>
     <div className="fade-3" style={{ marginTop: 34, display: 'grid', gridTemplateColumns: '1.12fr .88fr', gap: 24, alignItems: 'start' }}>
-      <CodeBlock size={17} lineHeight={1.18} padding="24px 28px">{`seed=42, Spatial+Object combined, 100 episodes
+      <CodeBlock size={17} lineHeight={1.18} padding="24px 28px">{`seed=42, LIBERO-Spatial, 50 episodes
 sweep          policy                    plan exec   success
-action-step    HFRVLA 30k alpha=.5       50   2      85/100
-action-step    SmolVLA                   50   2      82/100
-action-step    HFRVLA 30k alpha=.5       50   8      81/100
-action-step    SmolVLA                   50   8      77/100
-matched chunk  HFRVLA 30k alpha=.5       8    8      83/100
-matched chunk  SmolVLA                   4    4      79/100
-matched chunk  HFRVLA 30k alpha=.5       50   50     46/100
-matched chunk  SmolVLA                   50   50     43/100`}</CodeBlock>
+action-step    HFRVLA 30k alpha=.5       50   2      41/50
+action-step    SmolVLA                   50   2      36/50
+action-step    HFRVLA 30k alpha=.5       50   8      34/50
+action-step    SmolVLA                   50   8      32/50
+matched chunk  HFRVLA 30k alpha=.5       8    8      36/50
+matched chunk  SmolVLA                   8    8      29/50
+matched chunk  HFRVLA 30k alpha=.5       50   50     22/50
+matched chunk  SmolVLA                   50   50     20/50`}</CodeBlock>
       <div style={{ display: 'grid', gap: 18 }}>
         <Card title="Dashboard read" body="目前只說明比較趨勢，不把任何 success gap 寫成最終 paper claim。" tone={colors.accent} />
         <Card title="Main risk" body="plan=exec=50 時兩邊都掉很多；這仍是 calibration / target-deployment mismatch 的診斷重點。" tone={colors.rose} />
@@ -1379,7 +1379,7 @@ const ActionStepBaselineComparison: Page = () => (
   <PageShell label="Success comparison">
     <Heading maxWidth={1580}>固定 plan=50：success rate vs SmolVLA baseline</Heading>
     <Note width={1500}>
-      Spatial+Object combined，seed=42，100 episodes/setting。X 軸是 execution/replan interval K；slow planner 固定產生 50-step chunk。
+      LIBERO-Spatial，seed=42，50 episodes/setting。X 軸是 execution/replan interval K；slow planner 固定產生 50-step chunk。
     </Note>
     <div className="fade-3" style={{ marginTop: 26, display: 'grid', gridTemplateColumns: '920px 1fr', gap: 24, alignItems: 'start' }}>
       <SuccessLineChart title="Action-step sweep: plan=50, exec/replan=K" data={actionStepComparison} />
@@ -1392,7 +1392,7 @@ const MatchedChunkBaselineComparison: Page = () => (
   <PageShell label="Success comparison">
     <Heading maxWidth={1580}>Matched chunk：success rate vs SmolVLA baseline</Heading>
     <Note width={1500}>
-      Spatial+Object combined，seed=42，100 episodes/setting。X 軸是 matched K，其中 planning=execution=replan=K。
+      LIBERO-Spatial，seed=42，50 episodes/setting。X 軸是 matched K，其中 planning=execution=replan=K。
     </Note>
     <div className="fade-3" style={{ marginTop: 26, display: 'grid', gridTemplateColumns: '920px 1fr', gap: 24, alignItems: 'start' }}>
       <SuccessLineChart title="Matched chunk sweep: plan=exec=replan=K" data={matchedChunkComparison} />
@@ -1423,11 +1423,13 @@ alpha=.25, delta=.18  24/50 = 48.0%
 alpha=.25, delta=.20  27/50 = 54.0%
 alpha=.25, delta=.22  25/50 = 50.0%
 alpha=.25, delta=.25  21/50 = 42.0%
+alpha=.25, delta=.30  26/50 = 52.0%
+alpha=.25, delta=999  22/50 = 44.0%
 
 currently running
-alpha=.25, delta=.30`}</CodeBlock>
+alpha=.50, delta=.05`}</CodeBlock>
       <div style={{ display: 'grid', gap: 18 }}>
-        <Card title="Current read" body="alpha=.25 的 early best 仍是 clip=.2；.22/.25 都回落，目前要看 .3、no-limit 與更大 alpha 是否改善。" tone={colors.gold} />
+        <Card title="Current read" body="alpha=.25 的最佳是 clip=.2；.3 回到 52%，no-limit 掉到 44%，目前已進入 alpha=.5。" tone={colors.gold} />
         <Card title="No-limit row" body="delta_max=999 是近似無上限；只作 calibration stress test，不應直接當安全部署設定。" tone={colors.rose} />
         <Card title="Next paper action" body="跑完後只保留趨勢結論與最佳設定；移除 in-progress row 或改成 appendix log reference。" tone={colors.accent} />
       </div>
