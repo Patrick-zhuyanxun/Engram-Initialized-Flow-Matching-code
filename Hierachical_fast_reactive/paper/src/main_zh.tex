@@ -1,0 +1,136 @@
+\documentclass[10pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{fontspec}
+\usepackage{xeCJK}
+\usepackage{hyperref}
+
+\IfFontExistsTF{TeX Gyre Termes}{
+  \setmainfont{TeX Gyre Termes}
+}{
+  \setmainfont{Liberation Serif}
+}
+\IfFontExistsTF{Noto Serif CJK TC}{
+  \setCJKmainfont{Noto Serif CJK TC}
+}{
+  \IfFontExistsTF{Noto Sans CJK TC}{
+    \setCJKmainfont{Noto Sans CJK TC}
+  }{
+    \setCJKmainfont{AR PL UMing TW}
+  }
+}
+
+\newcommand{\method}{HFRVLA}
+\newcommand{\smolvla}{SmolVLA}
+\newcommand{\abase}{a_{\mathrm{base}}}
+\newcommand{\afinal}{a_{\mathrm{final}}}
+\newcommand{\deltah}{\hat{\Delta a}}
+
+\title{\method{}：凍結 VLA Action Chunk 的腕部視角快速殘差修正}
+\author{Anonymous}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Vision-language-action policy 常透過預測 action chunk 來分攤推論成本；然而，當 robot 以近似 open-loop 的方式執行一段 chunk 時，後續 action 可能仍然根據產生 chunk 時的舊 observation，而無法反映當下的 scene、object pose、contact condition 或 robot state。本文研究一個較窄但實作上重要的問題：在不 fine-tune base VLA 的前提下，一個小型 wrist-camera residual module 是否能改善 action chunk execution。\method{} 包住一個凍結的 LIBERO-adapted \smolvla{} slow planner，只訓練 fast residual head；該 head 使用 wrist DINOv3 patches、robot state、frozen base action、chunk position，以及 slow-planner context。部署時 robot 執行 $\afinal = \abase + \alpha \cdot \mathrm{clip}(\deltah)$。
+
+這份中文版草稿刻意不把目前數據寫成最終 claim。它的目的，是先固定 problem definition、system architecture 與 evaluation protocol；正式成功率主張應等完整實驗與 sweep 都完成後再補入。
+\end{abstract}
+
+\section{Introduction}
+
+大型 vision-language-action (VLA) policy 可以結合 language 與 visual context 產生 robot action，但高容量 policy 很難在每一個 control tick 都重新推論。實務上常見的折衷是 action chunking：policy 一次預測一段未來 action，robot 在下一次 replan 前連續執行這段 action。Chunking 能攤平推論成本並提升 temporal consistency，但它也降低 closed-loop reactivity。當 scene、object pose、contact condition 或 robot state 在 chunk execution 過程中改變時，chunk 後段 action 可能已經不再對應當下 observation。
+
+近期工作將這個 timing 問題明確化。A2C2 提出在每個 control step 執行的 correction head，使用最新 observation 與 base-policy context，對凍結 VLA action chunk 加上 time-aware residual correction~\citep{sendai2025a2c2}。DynamicVLA 則從 scheduler 與 model design 的角度處理 perception--execution gap，透過 continuous inference 與 latent-aware action streaming 降低 temporal misalignment~\citep{xie2026dynamicvla}。這些方向指出，action chunk deployment 不應只被看成 supervised action prediction 問題，也應被看成 closed-loop timing 問題。
+
+\method{} 問的是一個更聚焦的問題：當 slow VLA 完全凍結時，wrist-centric fast residual module 可以做到什麼程度？我們使用 \texttt{HuggingFaceVLA/smolvla\_libero} 作為 frozen slow planner~\citep{shukor2025smolvla}，預先記錄 slow planner outputs 與 DINOv3 wrist features~\citep{simeoni2025dinov3}，並透過 LeRobot workflow 訓練一個輕量 correction head~\citep{cadene2026lerobot}。需要精確說明的是：per-step 新的 visual correction signal 主要來自 wrist camera；但整個 policy 並不是 wrist-only，因為 fast module 同時使用 $\abase$、robot state、chunk position 與 slow-planner latent context。
+
+這份草稿先維持四個 scaffolded point，而不是提前寫入最終 empirical claim：
+\begin{enumerate}
+  \item \textbf{Problem framing.} Frozen VLA action chunks 應在 matched planning 與 execution horizons 下評估，因為 default every-step replanning 不是長 chunk execution 的 matched baseline。
+  \item \textbf{Method.} 一個小型 wrist-camera residual module 可以用 cached slow-planner features 離線訓練，並在不更新 slow VLA 的情況下以 $\abase + \alpha \cdot \mathrm{clip}(\deltah)$ 部署。
+  \item \textbf{Artifact.} 目前實作是 LeRobot-native：包含 dataset recording、fast-cache construction、training、checkpoint packaging 與 evaluation registry。
+  \item \textbf{Evaluation plan.} 最終成功率 claim 應在 action-step、matched-chunk、alpha/clip 與 target-alignment experiments 完成後再寫入。
+\end{enumerate}
+
+\section{Method}
+
+\subsection{Frozen Slow Planner}
+
+Slow planner 是凍結的 LIBERO-adapted \smolvla{} checkpoint。給定第三人稱與 wrist observations、state 以及 task text，planner 會輸出一段 action chunk。在 dataset recording 階段，我們儲存 per-step base action $\abase \in \mathbb{R}^7$、normalized chunk index，以及 pooled slow-planner context vectors。目前本機 feature contract 中，$z_{\mathrm{goal}} \in \mathbb{R}^{960}$，$z_{\mathrm{phase}} \in \mathbb{R}^{480}$。
+
+Main fast-module training loop 不重新建構 slow planner。HFRVLA 先記錄一個 custom LeRobotDataset v3，並可再轉成 compact frame-level fast-cache。這個設計讓 $\abase$、$z_{\mathrm{goal}}$ 與 $z_{\mathrm{phase}}$ 的 provenance 固定；如果 slow planner 更換，HFRVLA dataset 必須重新記錄。
+
+\subsection{Fast Wrist Residual Module}
+
+Trainable fast path 接收 current wrist DINOv3 patch features、robot state、$\abase$、chunk index、slow-planner context 與 previous correction，並預測完整 7D residual $\deltah$。部署時的 merge rule 為
+\begin{equation}
+  \afinal = \abase + \alpha \cdot \mathrm{clip}(\deltah, -\delta_{\max}, \delta_{\max}).
+\end{equation}
+目前 paper mainline 刻意排除較早版本中的 learned gate、contact auxiliary head 與以 GRU 為中心的設計。這讓第一版 paper claim 較容易解釋：若有改善，主要來自 residual correction 與其 conditioning，而不是另一個 intervention policy。
+
+\subsection{Training Objective}
+
+目前已實作的 baseline 使用 expert action 對 base action 的 residual 作為 target：
+\begin{equation}
+  \Delta a^* = a_{\mathrm{expert}} - \abase.
+\end{equation}
+現有程式也支援 final-action alignment terms，直接比較 $\abase + \alpha \cdot \mathrm{clip}(\deltah)$ 與 $a_{\mathrm{expert}}$，並監控 residual magnitude 與 clipping 行為。當前診斷顯示，下一個重要 target 是 delayed chunk-age supervision：fast module 應該學會修正從 $t-k$ 產生的 chunk 中第 $k$ 個 action，而不只是修正同一時間 $t$ 的 simultaneous base action。
+
+\section{Experimental Plan}
+
+我們透過 \texttt{lerobot-eval} 在 LIBERO~\citep{liu2023libero} 上評估。Fast training 使用已記錄的 HFRVLA LeRobotDataset v3，包含 1,693 episodes 與 273,465 frames。Evaluation registry 是所有 paper-facing comparisons 的 source of truth；但本草稿還不把任何成功率提升寫成 main claim。
+
+\begin{table}[t]
+  \centering
+  \caption{Planned result axes。成功率欄位在完整實驗完成前刻意保留為 placeholder。}
+  \begin{tabular}{llll}
+    \toprule
+    Comparison & Baseline & Variable & Status \\
+    \midrule
+    Action-step & Frozen \smolvla{} & exec/replan $K$ & pending \\
+    Matched chunk & Frozen \smolvla{} & plan=exec=$K$ & pending \\
+    Calibration & Current \method{} & $\alpha$, $\delta_{\max}$ & running \\
+    Target alignment & Same FWR & chunk-age target & planned \\
+    Timing features & Same FWR & age/latency features & planned \\
+    \bottomrule
+  \end{tabular}
+  \label{tab:planned-results-zh}
+\end{table}
+
+正式 paper 會把 slow-planner planning horizon 與 execution/replan interval 分開報告。這個區分是 evaluation design 的核心：default every-step replanning 可以作為有用 reference，但它不是 long chunk execution 的 matched baseline。在目前 sweep 完成前，數值化的 success-rate plots 與 tables 應先放在 HTML dashboard，而不是寫成 manuscript claim。
+
+\section{Related Work}
+
+\paragraph{Action chunk correction.}
+A2C2 是最接近的 conceptual anchor。它在每個 control step 使用最新 observation、base action、chunk-position feature 與 base-policy context，對 frozen VLA chunks 做 correction~\citep{sendai2025a2c2}。\method{} 採用相同的 residual-on-frozen-chunk 思路，但做出更窄的設計選擇：高頻 visual correction 來自 wrist camera path，而 global task context 由 frozen slow planner 繼承。
+
+\paragraph{Latency-aware VLA execution.}
+DynamicVLA 將 dynamic manipulation framed 成 perception--execution gap，並以 continuous inference 與 action streaming 處理~\citep{xie2026dynamicvla}。\method{} 的主貢獻不是重新設計 VLA 或 scheduler，而是研究一個小 residual head 是否能在 \smolvla{} 凍結的情況下補償部分 chunk staleness。
+
+\paragraph{Slow-fast robot policies.}
+Reactive Diffusion Policy 使用 slow-fast policy structure 與 visual-tactile feedback 來處理 contact-rich manipulation~\citep{xue2025rdp}。\method{} 共享 slow-fast motivation，但目前 fast visual signal 只使用 wrist vision，不加入額外 tactile sensors。
+
+\paragraph{Robot learning infrastructure.}
+LeRobot 提供本專案使用的 data、training 與 evaluation stack~\citep{cadene2026lerobot}。LIBERO 提供 manipulation benchmark 與 task suites~\citep{liu2023libero}。DINOv3 則提供 residual module 使用的 frozen dense wrist visual features~\citep{simeoni2025dinov3}。
+
+\section{Limitations and Next Steps}
+
+目前實驗範圍仍是 LIBERO simulation，不應被寫成 real-hardware validation。Long matched chunks、residual-scale calibration 與 target/deployment alignment 在完整 sweep 完成前都仍是 open questions。現有訓練也主要使用 simultaneous residual target；但 deployment 常需要修正的是由較舊 observation 產生的 stale chunk action。因此，下一版 method 應優先加入 delayed chunk-age residual targets、explicit age/latency features，以及與 inference 相同 $\alpha$ 與 clipping 的 deployment-aligned losses。
+
+Wrist-centric design 在 wrist image 看不到 target 或 global spatial relation 的 task 上也可能 under-conditioned。正確 claim 不是整個 policy 是 wrist-only；正確 claim 是 per-step 新 visual evidence 來自 wrist camera，而 slow planner 提供 task context。
+
+\section{Conclusion}
+
+\method{} 是一個 LeRobot-native testbed，用於研究 frozen VLA action chunks 上的 fast wrist residual correction。這份草稿先固定 high-level architecture 與 evaluation protocol；最終 paper 應在 active calibration 與 target-alignment experiments 完成後，再加入詳細成功率主張。
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}
