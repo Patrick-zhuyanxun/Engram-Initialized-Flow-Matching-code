@@ -92,7 +92,7 @@ We evaluate on LIBERO~\citep{liu2023libero} through `lerobot-eval'. The dataset 
 Table~\ref{tab:evidence} supports the conservative claim that wrist residual correction helps in some matched chunk-execution regimes, especially when execution/replan is short. It also shows the main unresolved problem: when planning and execution both remain at 50 steps, both \method{} and \smolvla{} degrade sharply.
 
 \paragraph{Active calibration sweep.}
-At the time of this draft, an expanded $n\_action\_steps=50$ LIBERO-Spatial alpha/clip sweep is running with 50 episodes per setting and eval batch size 3. Completed early rows for $\alpha=0.25$ are $23/50$ at $\delta_{\max}=0.05$, $23/50$ at $0.10$, $24/50$ at $0.15$, $24/50$ at $0.18$, and $27/50$ at $0.20$. The $\delta_{\max}=0.22$ row is currently running. These rows are trend diagnostics, not final paper claims.
+At the time of this draft, an expanded $n\_action\_steps=50$ LIBERO-Spatial alpha/clip sweep is running with 50 episodes per setting and eval batch size 3. Completed early rows for $\alpha=0.25$ are $23/50$ at $\delta_{\max}=0.05$, $23/50$ at $0.10$, $24/50$ at $0.15$, $24/50$ at $0.18$, $27/50$ at $0.20$, and $25/50$ at $0.22$. The $\delta_{\max}=0.25$ row is currently running. These rows are trend diagnostics, not final paper claims.
 
 \section{Related Work}
 

@@ -69,8 +69,8 @@ calibrated for `n_action_steps=50` without changing the large framework. The
 active LIBERO-Spatial sweep uses 50 episodes per setting, eval batch size 3,
 alpha in `{0.25, 0.5, 0.75, 1.0}`, and `delta_max` in
 `{0.05, 0.1, 0.15, 0.18, 0.2, 0.22, 0.25, 0.3, 999}`. Early completed rows
-show `alpha=0.25` improves only when the clip reaches `0.2`; the `0.22` row is
-currently running:
+show `alpha=0.25` peaks so far at `delta_max=0.2`; the `0.25` row is currently
+running:
 
 | Alpha | `delta_max` | Spatial success |
 |---:|---:|---:|
@@ -79,6 +79,7 @@ currently running:
 | 0.25 | 0.15 | 24/50 = 48.0% |
 | 0.25 | 0.18 | 24/50 = 48.0% |
 | 0.25 | 0.20 | 27/50 = 54.0% |
+| 0.25 | 0.22 | 25/50 = 50.0% |
 
 Treat these rows as calibration diagnostics, not final paper evidence, until
 the expanded sweep completes.

@@ -1276,11 +1276,12 @@ alpha=.25, delta=.10  23/50 = 46.0%
 alpha=.25, delta=.15  24/50 = 48.0%
 alpha=.25, delta=.18  24/50 = 48.0%
 alpha=.25, delta=.20  27/50 = 54.0%
+alpha=.25, delta=.22  25/50 = 50.0%
 
 currently running
-alpha=.25, delta=.22`}</CodeBlock>
+alpha=.25, delta=.25`}</CodeBlock>
       <div style={{ display: 'grid', gap: 18 }}>
-        <Card title="Current read" body="alpha=.25 到 clip=.2 才明顯高於 46-48% 區間；目前要看 .22/.25/.3 與更大 alpha 是否持續改善。" tone={colors.gold} />
+        <Card title="Current read" body="alpha=.25 的 early best 仍是 clip=.2；.22 回落到 50%，目前要看 .25/.3 與更大 alpha 是否改善。" tone={colors.gold} />
         <Card title="No-limit row" body="delta_max=999 是近似無上限；只作 calibration stress test，不應直接當安全部署設定。" tone={colors.rose} />
         <Card title="Next paper action" body="跑完後只保留趨勢結論與最佳設定；移除 in-progress row 或改成 appendix log reference。" tone={colors.accent} />
       </div>
