@@ -1255,7 +1255,106 @@ const matchedChunkComparison: SuccessDatum[] = [
   { k: 50, hfrvla: 44, baseline: 40, hfrvlaText: '22/50', baselineText: '20/50' },
 ];
 
+type AlphaClipRow = {
+  delta: string;
+  effectiveCaps: string[];
+  values: { successes: number; percent: number }[];
+};
+
+const alphaClipColumns = ['0.25', '0.50', '0.75', '1.00'];
+
+const alphaClipRows: AlphaClipRow[] = [
+  { delta: '0.05', effectiveCaps: ['0.013', '0.025', '0.038', '0.050'], values: [{ successes: 23, percent: 46 }, { successes: 27, percent: 54 }, { successes: 24, percent: 48 }, { successes: 25, percent: 50 }] },
+  { delta: '0.10', effectiveCaps: ['0.025', '0.050', '0.075', '0.100'], values: [{ successes: 23, percent: 46 }, { successes: 23, percent: 46 }, { successes: 24, percent: 48 }, { successes: 28, percent: 56 }] },
+  { delta: '0.15', effectiveCaps: ['0.038', '0.075', '0.113', '0.150'], values: [{ successes: 24, percent: 48 }, { successes: 22, percent: 44 }, { successes: 23, percent: 46 }, { successes: 24, percent: 48 }] },
+  { delta: '0.18', effectiveCaps: ['0.045', '0.090', '0.135', '0.180'], values: [{ successes: 24, percent: 48 }, { successes: 23, percent: 46 }, { successes: 23, percent: 46 }, { successes: 20, percent: 40 }] },
+  { delta: '0.20', effectiveCaps: ['0.050', '0.100', '0.150', '0.200'], values: [{ successes: 27, percent: 54 }, { successes: 28, percent: 56 }, { successes: 26, percent: 52 }, { successes: 23, percent: 46 }] },
+  { delta: '0.22', effectiveCaps: ['0.055', '0.110', '0.165', '0.220'], values: [{ successes: 25, percent: 50 }, { successes: 26, percent: 52 }, { successes: 26, percent: 52 }, { successes: 20, percent: 40 }] },
+  { delta: '0.25', effectiveCaps: ['0.063', '0.125', '0.188', '0.250'], values: [{ successes: 21, percent: 42 }, { successes: 25, percent: 50 }, { successes: 20, percent: 40 }, { successes: 21, percent: 42 }] },
+  { delta: '0.30', effectiveCaps: ['0.075', '0.150', '0.225', '0.300'], values: [{ successes: 26, percent: 52 }, { successes: 22, percent: 44 }, { successes: 18, percent: 36 }, { successes: 19, percent: 38 }] },
+  { delta: '999', effectiveCaps: ['none', 'none', 'none', 'none'], values: [{ successes: 22, percent: 44 }, { successes: 8, percent: 16 }, { successes: 2, percent: 4 }, { successes: 1, percent: 2 }] },
+];
+
 const signedPts = (value: number) => `${value >= 0 ? '+' : ''}${value} pts`;
+
+const alphaClipHeatTone = (percent: number) => {
+  if (percent >= 56) return { fill: 'rgba(50, 211, 153, 0.43)', text: colors.accent, stroke: colors.accent };
+  if (percent >= 52) return { fill: 'rgba(247, 198, 106, 0.31)', text: colors.gold, stroke: colors.gold };
+  if (percent <= 16) return { fill: 'rgba(255, 124, 154, 0.40)', text: colors.rose, stroke: colors.rose };
+  if (percent <= 40) return { fill: 'rgba(255, 124, 154, 0.23)', text: colors.rose, stroke: colors.lineStrong };
+  return { fill: 'rgba(120, 232, 190, 0.08)', text: colors.text, stroke: colors.line };
+};
+
+const AlphaClipHeatmap = () => {
+  const width = 920;
+  const height = 510;
+  const left = 90;
+  const top = 88;
+  const cellW = 198;
+  const cellH = 38;
+  const gap = 4;
+  const gridW = alphaClipColumns.length * cellW + (alphaClipColumns.length - 1) * gap;
+  const gridH = alphaClipRows.length * cellH + (alphaClipRows.length - 1) * gap;
+
+  return (
+    <div style={{ background: colors.panel, border: `1px solid ${colors.line}`, borderRadius: 10, padding: '18px 20px' }}>
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="alpha clip heatmap">
+        <text x={left + gridW / 2} y={32} textAnchor="middle" fill={colors.gold} fontFamily={font.mono} fontSize="24" fontWeight="900">
+          alpha
+        </text>
+        <text x={26} y={top + gridH / 2} textAnchor="middle" fill={colors.gold} fontFamily={font.mono} fontSize="22" fontWeight="900" transform={`rotate(-90 26 ${top + gridH / 2})`}>
+          clip / delta_max
+        </text>
+        <text x={left} y={height - 22} fill={colors.muted} fontFamily={font.mono} fontSize="15">
+          color = success rate; text = successes / 50; cap = alpha * clip
+        </text>
+        {alphaClipColumns.map((alpha, index) => {
+          const x = left + index * (cellW + gap);
+          return (
+            <text key={alpha} x={x + cellW / 2} y={64} textAnchor="middle" fill={colors.gold} fontFamily={font.mono} fontSize="19" fontWeight="900">
+              {alpha}
+            </text>
+          );
+        })}
+        {alphaClipRows.map((row, rowIndex) => {
+          const y = top + rowIndex * (cellH + gap);
+          return (
+            <g key={`row-${row.delta}`}>
+              <text x={left - 18} y={y + cellH / 2 + 7} textAnchor="end" fill={row.delta === '999' ? colors.rose : colors.gold} fontFamily={font.mono} fontSize="18" fontWeight="900">
+                {row.delta}
+              </text>
+              {row.values.map((cell, colIndex) => {
+                const x = left + colIndex * (cellW + gap);
+                const tone = alphaClipHeatTone(cell.percent);
+                const isBest = cell.percent === 56;
+                return (
+                  <g key={`${row.delta}-${alphaClipColumns[colIndex]}`}>
+                    <rect
+                      x={x}
+                      y={y}
+                      width={cellW}
+                      height={cellH}
+                      rx="4"
+                      fill={tone.fill}
+                      stroke={isBest ? colors.accent : tone.stroke}
+                      strokeWidth={isBest ? 3 : 1}
+                    />
+                    <text x={x + cellW / 2} y={y + 17} textAnchor="middle" fill={tone.text} fontFamily={font.mono} fontSize="16" fontWeight="900">
+                      {cell.successes}/50 = {cell.percent}%
+                    </text>
+                    <text x={x + cellW / 2} y={y + 32} textAnchor="middle" fill={colors.muted} fontFamily={font.mono} fontSize="12">
+                      cap {row.effectiveCaps[colIndex]}
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+};
 
 const SuccessLineChart = ({
   title,
@@ -1402,36 +1501,23 @@ const MatchedChunkBaselineComparison: Page = () => (
 );
 
 const ActiveN50Calibration: Page = () => (
-  <PageShell label="Active n=50 calibration">
-    <Heading maxWidth={1580}>目前正在跑：n_action_steps=50 alpha/clip sweep</Heading>
+  <PageShell label="n=50 calibration result">
+    <Heading maxWidth={1580}>n_action_steps=50：alpha/clip sweep 結果</Heading>
     <Note width={1500}>
-      這是診斷趨勢，不是最終 paper table。LIBERO-Spatial，50 episodes/setting，eval batch size=3；clip 0.3 和近似無上限 999 已納入。
+      LIBERO-Spatial，seed=42，50 episodes/setting，planning=execution=replan=50，eval batch size=3。Baseline reference：matched SmolVLA K=50 是 20/50 = 40%。
     </Note>
-    <div className="fade-3" style={{ marginTop: 34, display: 'grid', gridTemplateColumns: '1.1fr .9fr', gap: 24, alignItems: 'start' }}>
-      <CodeBlock size={17} lineHeight={1.18} padding="24px 28px">{`active CSV
-outputs/eval_hfrvla_fwr_chunk_generated_seq2_b1024p3_50k_n50_alpha_clip_spatial_50eps_b3/results.csv
-
-grid
-alpha      0.25, 0.5, 0.75, 1.0
-delta_max  0.05, 0.1, 0.15, 0.18, 0.2, 0.22, 0.25, 0.3, 999
-
-early completed rows
-alpha=.25, delta=.05  23/50 = 46.0%
-alpha=.25, delta=.10  23/50 = 46.0%
-alpha=.25, delta=.15  24/50 = 48.0%
-alpha=.25, delta=.18  24/50 = 48.0%
-alpha=.25, delta=.20  27/50 = 54.0%
-alpha=.25, delta=.22  25/50 = 50.0%
-alpha=.25, delta=.25  21/50 = 42.0%
-alpha=.25, delta=.30  26/50 = 52.0%
-alpha=.25, delta=999  22/50 = 44.0%
-
-currently running
-alpha=.50, delta=.05`}</CodeBlock>
-      <div style={{ display: 'grid', gap: 18 }}>
-        <Card title="Current read" body="alpha=.25 的最佳是 clip=.2；.3 回到 52%，no-limit 掉到 44%，目前已進入 alpha=.5。" tone={colors.gold} />
-        <Card title="No-limit row" body="delta_max=999 是近似無上限；只作 calibration stress test，不應直接當安全部署設定。" tone={colors.rose} />
-        <Card title="Next paper action" body="跑完後只保留趨勢結論與最佳設定；移除 in-progress row 或改成 appendix log reference。" tone={colors.accent} />
+    <div className="fade-3" style={{ marginTop: 24, display: 'grid', gridTemplateColumns: '1.15fr .85fr', gap: 22, alignItems: 'start' }}>
+      <div>
+        <AlphaClipHeatmap />
+        <div style={{ marginTop: 14, fontFamily: font.mono, fontSize: 15, color: colors.muted }}>
+          Source: experiments/eval_registry/eval_results_master.csv; raw CSV:
+          outputs/eval_hfrvla_fwr_chunk_generated_seq2_b1024p3_50k_n50_alpha_clip_spatial_50eps_b3/results.csv
+        </div>
+      </div>
+      <div style={{ display: 'grid', gap: 15 }}>
+        <MiniCard title="Best settings" body="最高是 28/50 = 56%：alpha=.5 clip=.2，以及 alpha=1.0 clip=.1；兩者 effective cap 都是 0.1。" tone={colors.accent} />
+        <MiniCard title="Useful conclusion" body="最佳 56% 比 SmolVLA K=50 baseline 高 16 pts；但長 chunk 不是越大 residual 越好，較大 cap 會 over-correct。" tone={colors.gold} />
+        <MiniCard title="No-limit result" body="delta=999 在 alpha=.5/.75/1.0 時掉到 16%、4%、2%；clip 是必要 deployment constraint。" tone={colors.rose} />
       </div>
     </div>
   </PageShell>
@@ -1451,7 +1537,7 @@ const EvalRegistry: Page = () => (
 
   eval_results_master.csv
     compact long/tidy table
-    193 rows, 37 columns
+    229 rows, 37 columns
     dashboard uses only stable evidence
 
 scripts/build_eval_results_master.py
@@ -1459,7 +1545,7 @@ scripts/build_eval_results_master.py
   expands sweep/profile metadata
   keeps paper-facing CSV compact`}</CodeBlock>
       <div style={{ display: 'grid', gap: 18 }}>
-        <MiniCard title="Current sources" body="10 manifest rows；master check 目前為 193 rows，包含 derived combined rows。" tone={colors.accent} />
+        <MiniCard title="Current sources" body="11 manifest rows；master check 目前為 229 rows，包含 derived combined rows。" tone={colors.accent} />
         <MiniCard title="Do not hand-edit" body="master CSV 是 build artifact；未來不同 training params 都透過 sources.csv 記錄。" tone={colors.rose} />
         <MiniCard title="Paper use" body="HTML 不再保留舊 raw result pages；paper table 從 master CSV filter/groupby。" tone={colors.gold} />
       </div>
@@ -1475,7 +1561,7 @@ const ExperimentMatrix: Page = () => (
     </Note>
     <div className="fade-3" style={{ marginTop: 32, width: 1640 }}>
       <CodeBlock size={15} lineHeight={1.13} padding="22px 24px">{`experiment_id                  variable                 values / plan                         fixed_controls                                      status
-n50_alpha_clip_expanded        alpha x delta_max        alpha=.25,.5,.75,1; delta=.05-.3,999 plan=50; exec=50; 50eps; batch=3             running
+n50_alpha_clip_spatial_50eps   alpha x delta_max        best 56% at effective cap=.1        plan=exec=replan=50; spatial 50eps; batch=3        completed
 delayed_chunk_age_target       residual target          current-step vs stale chunk-age       same FWR-v2 architecture                         planned
 time_age_features              timing features          k_norm, sin/cos, age_norm, latency    same checkpoint/data pipeline                    planned
 latent_context_ablation        slow context             keep/remove z_goal,z_phase            wrist/state/a_base fixed                         planned

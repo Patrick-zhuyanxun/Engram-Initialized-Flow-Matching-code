@@ -166,6 +166,10 @@ SWEEP_PROFILES = {
         "sweep_type": "matched_planning_execution_sweep",
         "comparison_axis": "planning_and_execution_chunk_size",
     },
+    "n50_alpha_clip_spatial_50eps": {
+        "sweep_type": "alpha_clip_sweep",
+        "comparison_axis": "alpha_delta_max",
+    },
 }
 
 
