@@ -1230,11 +1230,130 @@ const RetiredPath: Page = () => (
   </PageShell>
 );
 
+type SuccessDatum = {
+  k: number;
+  hfrvla: number;
+  baseline: number;
+  hfrvlaText: string;
+  baselineText: string;
+};
+
+const actionStepComparison: SuccessDatum[] = [
+  { k: 2, hfrvla: 85, baseline: 82, hfrvlaText: '85/100', baselineText: '82/100' },
+  { k: 4, hfrvla: 83, baseline: 73, hfrvlaText: '83/100', baselineText: '73/100' },
+  { k: 8, hfrvla: 81, baseline: 77, hfrvlaText: '81/100', baselineText: '77/100' },
+  { k: 16, hfrvla: 74, baseline: 78, hfrvlaText: '74/100', baselineText: '78/100' },
+  { k: 32, hfrvla: 71, baseline: 73, hfrvlaText: '71/100', baselineText: '73/100' },
+];
+
+const matchedChunkComparison: SuccessDatum[] = [
+  { k: 2, hfrvla: 82, baseline: 76, hfrvlaText: '82/100', baselineText: '76/100' },
+  { k: 4, hfrvla: 78, baseline: 79, hfrvlaText: '78/100', baselineText: '79/100' },
+  { k: 8, hfrvla: 83, baseline: 74, hfrvlaText: '83/100', baselineText: '74/100' },
+  { k: 16, hfrvla: 80, baseline: 74, hfrvlaText: '80/100', baselineText: '74/100' },
+  { k: 32, hfrvla: 71, baseline: 67, hfrvlaText: '71/100', baselineText: '67/100' },
+  { k: 50, hfrvla: 46, baseline: 43, hfrvlaText: '46/100', baselineText: '43/100' },
+];
+
+const signedPts = (value: number) => `${value >= 0 ? '+' : ''}${value} pts`;
+
+const SuccessLineChart = ({
+  title,
+  data,
+}: {
+  title: string;
+  data: SuccessDatum[];
+}) => {
+  const width = 900;
+  const height = 390;
+  const left = 78;
+  const right = 34;
+  const top = 46;
+  const bottom = 72;
+  const yMin = 40;
+  const yMax = 90;
+  const innerW = width - left - right;
+  const innerH = height - top - bottom;
+  const x = (index: number) => left + (innerW * index) / Math.max(1, data.length - 1);
+  const y = (value: number) => top + innerH - ((value - yMin) / (yMax - yMin)) * innerH;
+  const points = (key: 'hfrvla' | 'baseline') =>
+    data.map((row, index) => `${x(index)},${y(row[key])}`).join(' ');
+
+  return (
+    <div style={{ background: colors.panel, border: `1px solid ${colors.line}`, borderRadius: 10, padding: '22px 24px' }}>
+      <div style={{ fontSize: 25, fontWeight: 850, color: colors.gold, marginBottom: 8 }}>{title}</div>
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
+        {[40, 50, 60, 70, 80, 90].map((tick) => (
+          <g key={tick}>
+            <line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} stroke={colors.line} />
+            <text x={left - 16} y={y(tick) + 7} textAnchor="end" fill={colors.muted} fontFamily={font.mono} fontSize="20">
+              {tick}%
+            </text>
+          </g>
+        ))}
+        <line x1={left} x2={width - right} y1={height - bottom} y2={height - bottom} stroke={colors.lineStrong} />
+        <line x1={left} x2={left} y1={top} y2={height - bottom} stroke={colors.lineStrong} />
+        <polyline points={points('baseline')} fill="none" stroke={colors.gold} strokeWidth="5" strokeLinejoin="round" strokeLinecap="round" />
+        <polyline points={points('hfrvla')} fill="none" stroke={colors.accent} strokeWidth="6" strokeLinejoin="round" strokeLinecap="round" />
+        {data.map((row, index) => (
+          <g key={`pt-${row.k}`}>
+            <circle cx={x(index)} cy={y(row.baseline)} r="8" fill={colors.gold} />
+            <circle cx={x(index)} cy={y(row.hfrvla)} r="9" fill={colors.accent} />
+            <text x={x(index)} y={height - 34} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize="22">
+              {row.k}
+            </text>
+          </g>
+        ))}
+        <text x={left} y={30} fill={colors.accent} fontFamily={font.mono} fontSize="21">
+          HFRVLA
+        </text>
+        <text x={left + 120} y={30} fill={colors.gold} fontFamily={font.mono} fontSize="21">
+          SmolVLA baseline
+        </text>
+      </svg>
+    </div>
+  );
+};
+
+const SuccessComparisonTable = ({
+  rows,
+  firstColumn,
+}: {
+  rows: SuccessDatum[];
+  firstColumn: string;
+}) => (
+  <div style={{ background: colors.panel, border: `1px solid ${colors.line}`, borderRadius: 10, overflow: 'hidden' }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: font.mono, fontSize: 21 }}>
+      <thead>
+        <tr style={{ background: 'rgba(120, 232, 190, 0.10)', color: colors.gold }}>
+          <th style={{ textAlign: 'left', padding: '16px 18px' }}>{firstColumn}</th>
+          <th style={{ textAlign: 'right', padding: '16px 18px' }}>HFRVLA</th>
+          <th style={{ textAlign: 'right', padding: '16px 18px' }}>SmolVLA</th>
+          <th style={{ textAlign: 'right', padding: '16px 18px' }}>delta</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => {
+          const delta = row.hfrvla - row.baseline;
+          return (
+            <tr key={row.k} style={{ borderTop: `1px solid ${colors.line}` }}>
+              <td style={{ padding: '15px 18px', color: colors.text }}>{row.k}</td>
+              <td style={{ padding: '15px 18px', textAlign: 'right', color: colors.accent }}>{row.hfrvlaText} = {row.hfrvla.toFixed(1)}%</td>
+              <td style={{ padding: '15px 18px', textAlign: 'right', color: colors.gold }}>{row.baselineText} = {row.baseline.toFixed(1)}%</td>
+              <td style={{ padding: '15px 18px', textAlign: 'right', color: delta >= 0 ? colors.accent : colors.rose }}>{signedPts(delta)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+);
+
 const EvidenceSnapshot: Page = () => (
   <PageShell label="Evidence snapshot">
-    <Heading maxWidth={1580}>穩定 evidence：短 execution 有幫助，長 chunk 還沒解</Heading>
+    <Heading maxWidth={1580}>穩定 evidence：保留 baseline 比較，不提前寫成 paper claim</Heading>
     <Note width={1500}>
-      這頁只保留 registry-backed、paper-facing 的核心讀法；舊 FWR 10x10、LR/WD、舊 alpha/clip 表格不再放進 HTML。
+      這頁只摘要 registry-backed combined rows；完整成功率比較在後面兩張折線圖與表格。Paper 正文先保留方法大架構，等全部實驗完成後再寫細節主張。
     </Note>
     <div className="fade-3" style={{ marginTop: 34, display: 'grid', gridTemplateColumns: '1.12fr .88fr', gap: 24, alignItems: 'start' }}>
       <CodeBlock size={17} lineHeight={1.18} padding="24px 28px">{`seed=42, Spatial+Object combined, 100 episodes
@@ -1248,10 +1367,36 @@ matched chunk  SmolVLA                   4    4      79/100
 matched chunk  HFRVLA 30k alpha=.5       50   50     46/100
 matched chunk  SmolVLA                   50   50     43/100`}</CodeBlock>
       <div style={{ display: 'grid', gap: 18 }}>
-        <Card title="Paper claim" body="HFRVLA 在 matched short-execution regime 有小幅改善，但不是 long-horizon 完整解法。" tone={colors.accent} />
-        <Card title="Main risk" body="plan=exec=50 時兩邊都掉很多；這是目前 alpha/clip 與 target-deployment mismatch 的診斷重點。" tone={colors.rose} />
+        <Card title="Dashboard read" body="目前只說明比較趨勢，不把任何 success gap 寫成最終 paper claim。" tone={colors.accent} />
+        <Card title="Main risk" body="plan=exec=50 時兩邊都掉很多；這仍是 calibration / target-deployment mismatch 的診斷重點。" tone={colors.rose} />
         <Card title="Source of truth" body="正式表格從 experiments/eval_registry/eval_results_master.csv 產生，不從 sandbox log 手抄。" tone={colors.gold} />
       </div>
+    </div>
+  </PageShell>
+);
+
+const ActionStepBaselineComparison: Page = () => (
+  <PageShell label="Success comparison">
+    <Heading maxWidth={1580}>固定 plan=50：success rate vs SmolVLA baseline</Heading>
+    <Note width={1500}>
+      Spatial+Object combined，seed=42，100 episodes/setting。X 軸是 execution/replan interval K；slow planner 固定產生 50-step chunk。
+    </Note>
+    <div className="fade-3" style={{ marginTop: 26, display: 'grid', gridTemplateColumns: '920px 1fr', gap: 24, alignItems: 'start' }}>
+      <SuccessLineChart title="Action-step sweep: plan=50, exec/replan=K" data={actionStepComparison} />
+      <SuccessComparisonTable rows={actionStepComparison} firstColumn="exec K" />
+    </div>
+  </PageShell>
+);
+
+const MatchedChunkBaselineComparison: Page = () => (
+  <PageShell label="Success comparison">
+    <Heading maxWidth={1580}>Matched chunk：success rate vs SmolVLA baseline</Heading>
+    <Note width={1500}>
+      Spatial+Object combined，seed=42，100 episodes/setting。X 軸是 matched K，其中 planning=execution=replan=K。
+    </Note>
+    <div className="fade-3" style={{ marginTop: 26, display: 'grid', gridTemplateColumns: '920px 1fr', gap: 24, alignItems: 'start' }}>
+      <SuccessLineChart title="Matched chunk sweep: plan=exec=replan=K" data={matchedChunkComparison} />
+      <SuccessComparisonTable rows={matchedChunkComparison} firstColumn="matched K" />
     </div>
   </PageShell>
 );
@@ -1442,6 +1587,8 @@ export default [
   DecisionLedger,
   RetiredPath,
   EvidenceSnapshot,
+  ActionStepBaselineComparison,
+  MatchedChunkBaselineComparison,
   ActiveN50Calibration,
   ExperimentMatrix,
   EvalRegistry,
