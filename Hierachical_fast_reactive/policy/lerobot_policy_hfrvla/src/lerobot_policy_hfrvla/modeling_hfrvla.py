@@ -33,6 +33,7 @@ from lerobot.utils.constants import ACTION, OBS_STATE
 from lerobot_policy_hfrvla.configuration_hfrvla import HFRVLAConfig
 from lerobot_policy_hfrvla.fast_reactive import FastReactiveModule, FastReactiveOutput
 from lerobot_policy_hfrvla.fast_wrist_residual import (
+    FastWristChunkResidualModule,
     FastWristResidualModule,
     FastWristResidualOutput,
 )
@@ -45,13 +46,14 @@ def _residual_merge_mode(config: HFRVLAConfig) -> str:
 
 
 def _fast_residual_alpha(config: HFRVLAConfig) -> float:
-    return float(
-        getattr(
-            config,
-            "fast_residual_alpha",
-            getattr(config, "a2c2_alpha", 1.0),
-        )
-    )
+    value = getattr(config, "fast_residual_alpha", None)
+    if value is None:
+        value = getattr(config, "a2c2_alpha", 1.0)
+    return float(value)
+
+
+def _is_fast_wrist_mode(config: HFRVLAConfig) -> bool:
+    return _residual_merge_mode(config) in {"fast_wrist", "fast_wrist_chunk"}
 
 
 def _set_head_grads(policy_or_stub, *, gate: bool, contact: bool) -> None:
@@ -223,6 +225,14 @@ class HFRVLAPolicy(SmolVLAPolicy):
                 zgoal_dim=zgoal_dim,
                 zphase_dim=zphase_dim,
             )
+        elif mode == "fast_wrist_chunk":
+            self.fast = FastWristChunkResidualModule(
+                config=self.config,
+                action_dim=action_dim,
+                proprio_dim=proprio_dim,
+                zgoal_dim=zgoal_dim,
+                zphase_dim=zphase_dim,
+            )
         elif mode == "gated":
             self.fast = FastReactiveModule(
                 config=self.config,
@@ -234,7 +244,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
         else:
             raise ValueError(
                 f"Unsupported residual_merge_mode={self.config.residual_merge_mode!r}; "
-                "expected 'gated' or 'fast_wrist'."
+                "expected 'gated', 'fast_wrist', or 'fast_wrist_chunk'."
             )
 
     def _init_hfrvla_state(self) -> None:
@@ -255,11 +265,65 @@ class HFRVLAPolicy(SmolVLAPolicy):
         self._prev_action: Optional[Tensor] = None
         self._prev_a_base: Optional[Tensor] = None
         self._prev_delta_exec: Optional[Tensor] = None
+        self._current_a_base_chunk: Optional[Tensor] = None
         self._chunk_size: int = self.config.n_action_steps
         self._chunk_consumed: int = 0
         self._queues = {
             ACTION: deque(maxlen=self.config.n_action_steps),
         }
+        self.reset_inference_debug_stats()
+
+    def reset_inference_debug_stats(self) -> None:
+        """Reset lightweight counters for verifying runtime correction usage."""
+        self._inference_debug_stats = {
+            "select_action_calls": 0,
+            "new_chunks": 0,
+            "fast_applied": 0,
+            "fast_skipped_disabled": 0,
+            "fast_skipped_hook_cache_miss": 0,
+            "delta_norm_sum": 0.0,
+            "delta_clip_fraction_sum": 0.0,
+            "k_sum": 0.0,
+        }
+
+    def _ensure_inference_debug_stats(self) -> dict[str, float | int]:
+        if not hasattr(self, "_inference_debug_stats"):
+            self.reset_inference_debug_stats()
+        return self._inference_debug_stats
+
+    def _record_inference_new_chunk(self) -> None:
+        stats = self._ensure_inference_debug_stats()
+        stats["new_chunks"] += 1
+
+    def _record_inference_fast_skipped(self, reason: str) -> None:
+        stats = self._ensure_inference_debug_stats()
+        stats["select_action_calls"] += 1
+        key = f"fast_skipped_{reason}"
+        if key not in stats:
+            stats[key] = 0
+        stats[key] += 1
+
+    def _record_inference_fast_applied(self, *, k: int, delta_a: Tensor) -> None:
+        stats = self._ensure_inference_debug_stats()
+        stats["select_action_calls"] += 1
+        stats["fast_applied"] += 1
+        cap = self._fast_residual_cap()
+        stats["delta_norm_sum"] += float(delta_a.detach().norm(dim=-1).mean().item())
+        stats["delta_clip_fraction_sum"] += float(
+            (delta_a.detach().abs() > cap).to(dtype=torch.float32).mean().item()
+        )
+        stats["k_sum"] += float(k)
+
+    def get_inference_debug_stats(self) -> dict[str, float | int]:
+        """Return counters plus aggregate ratios for eval/deployment auditing."""
+        stats = dict(self._ensure_inference_debug_stats())
+        calls = max(1, int(stats["select_action_calls"]))
+        applied = max(1, int(stats["fast_applied"]))
+        stats["fast_applied_ratio"] = float(stats["fast_applied"]) / calls
+        stats["delta_norm_mean"] = float(stats["delta_norm_sum"]) / applied
+        stats["delta_clip_fraction_mean"] = float(stats["delta_clip_fraction_sum"]) / applied
+        stats["k_mean"] = float(stats["k_sum"]) / applied
+        return stats
 
     # ────────────────────────────────────────────────────────────────────
     # Hook plumbing
@@ -356,6 +420,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
         self._prev_action = None
         self._prev_a_base = None
         self._prev_delta_exec = None
+        self._current_a_base_chunk = None
         self._chunk_consumed = 0
         self._clear_hook_cache()
 
@@ -385,10 +450,12 @@ class HFRVLAPolicy(SmolVLAPolicy):
         if is_new_chunk:
             self._clear_hook_cache()
             actions = self._get_action_chunk(batch)
+            self._current_a_base_chunk = actions.detach()
             self._queues[ACTION].extend(
                 actions.transpose(0, 1)[: self.config.n_action_steps]
             )
             self._chunk_consumed = 0
+            self._record_inference_new_chunk()
 
         a_base = self._queues[ACTION].popleft()
         self._chunk_consumed += 1
@@ -397,12 +464,23 @@ class HFRVLAPolicy(SmolVLAPolicy):
         # Verifies that the HFRVLA wrapper + dataset feature config + action
         # post-processing produce outputs LIBERO env accepts.
         if getattr(self.config, "inference_disable_fast", False):
+            self._record_inference_fast_skipped("disabled")
             return a_base
 
         k = self._chunk_consumed - 1
+        k_norm_denom = max(
+            1,
+            (
+                int(self._current_a_base_chunk.shape[1]) - 1
+                if _residual_merge_mode(self.config) == "fast_wrist_chunk"
+                and self._current_a_base_chunk is not None
+                and self._current_a_base_chunk.dim() == 3
+                else self.config.n_action_steps - 1
+            ),
+        )
         k_norm = torch.full(
             (a_base.shape[0], 1),
-            k / max(1, self.config.n_action_steps - 1),
+            k / k_norm_denom,
             device=a_base.device,
             dtype=a_base.dtype,
         )
@@ -413,9 +491,48 @@ class HFRVLAPolicy(SmolVLAPolicy):
         if self._zgoal_cache is None or self._zphase_cache is None:
             # Hooks never fired (e.g. first call has empty queue but SmolVLA
             # forward path differed); fall back to a_base alone.
+            self._record_inference_fast_skipped("hook_cache_miss")
             return a_base
 
-        if _residual_merge_mode(self.config) == "fast_wrist":
+        mode = _residual_merge_mode(self.config)
+        if mode == "fast_wrist_chunk":
+            if self._current_a_base_chunk is None:
+                a_base_chunk = a_base.unsqueeze(1)
+            else:
+                a_base_chunk = self._current_a_base_chunk.to(device=a_base.device, dtype=a_base.dtype)
+            chunk_step_idx = torch.full(
+                (a_base.shape[0], 1),
+                k,
+                device=a_base.device,
+                dtype=torch.long,
+            )
+            fwr_out: FastWristResidualOutput = self.fast(
+                wrist_rgb=wrist_rgb,
+                proprio=proprio,
+                a_base_k=a_base,
+                k_idx_norm=k_norm,
+                z_goal=self._zgoal_cache,
+                z_phase=self._zphase_cache,
+                a_base_chunk=a_base_chunk,
+                chunk_step_idx=chunk_step_idx,
+            )
+            a_final = self._merge(
+                a_base=a_base,
+                delta_a=fwr_out.delta_a,
+                gate=torch.ones(a_base.shape[0], device=a_base.device, dtype=a_base.dtype),
+                prev_a=self._prev_action,
+            )
+            delta_exec = (
+                _fast_residual_alpha(self.config)
+                * self._clip_fast_residual(fwr_out.delta_a)
+            )
+            self._record_inference_fast_applied(k=k, delta_a=fwr_out.delta_a)
+            self._prev_a_base = a_base.detach()
+            self._prev_delta_exec = delta_exec.detach()
+            self._prev_action = a_final.detach()
+            return a_final
+
+        if mode == "fast_wrist":
             prev_a_base = self._prev_a_base if self._prev_a_base is not None else a_base
             prev_delta = (
                 self._prev_delta_exec
@@ -442,6 +559,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
                 _fast_residual_alpha(self.config)
                 * self._clip_fast_residual(fwr_out.delta_a)
             )
+            self._record_inference_fast_applied(k=k, delta_a=fwr_out.delta_a)
             self._prev_a_base = a_base.detach()
             self._prev_delta_exec = delta_exec.detach()
             self._prev_action = a_final.detach()
@@ -464,6 +582,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
             gate=fr_out.gate,
             prev_a=self._prev_action,
         )
+        self._record_inference_fast_applied(k=k, delta_a=fr_out.delta_a)
         self._prev_action = a_final.detach()
         return a_final
 
@@ -513,11 +632,14 @@ class HFRVLAPolicy(SmolVLAPolicy):
     ) -> Tensor:
         del prev_a  # Base SmolVLA chunks are already valid actions.
         delta_clip = self._clip_fast_residual(delta_a)
-        if _residual_merge_mode(self.config) == "fast_wrist":
+        if _is_fast_wrist_mode(self.config):
             return a_base + _fast_residual_alpha(self.config) * delta_clip
         return a_base + gate.unsqueeze(-1) * delta_clip
 
     def _clip_fast_residual(self, delta_a: Tensor) -> Tensor:
+        return delta_a.clamp(-self._fast_residual_cap(), self._fast_residual_cap())
+
+    def _fast_residual_cap(self) -> float:
         max_residual = float(self.config.delta_max)
         velocity_residual = (
             float(self.config.safety_joint_velocity_limit)
@@ -525,7 +647,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
         )
         if velocity_residual > 0:
             max_residual = min(max_residual, velocity_residual)
-        return delta_a.clamp(-max_residual, max_residual)
+        return max_residual
 
     # ────────────────────────────────────────────────────────────────────
     # Training
@@ -558,7 +680,32 @@ class HFRVLAPolicy(SmolVLAPolicy):
         dino_patches = batch["observation.extra.dino_patches"]
         contact_label = batch.get("observation.extra.contact_label")
 
-        if _residual_merge_mode(self.config) == "fast_wrist":
+        mode = _residual_merge_mode(self.config)
+        if mode == "fast_wrist_chunk":
+            a_base_chunk = batch["observation.extra.a_base_chunk"]
+            chunk_step_idx = batch["observation.extra.chunk_step_idx"]
+            fwr_out: FastWristResidualOutput = self.fast(
+                wrist_rgb=None,
+                proprio=proprio[:, -1],
+                a_base_k=a_base[:, -1],
+                k_idx_norm=k_idx_norm[:, -1],
+                z_goal=z_goal[:, -1],
+                z_phase=z_phase[:, -1],
+                a_base_chunk=a_base_chunk[:, -1],
+                chunk_step_idx=chunk_step_idx[:, -1],
+                dino_patches=dino_patches[:, -1],
+            )
+            losses = self._compute_losses(
+                fwr_out,
+                a_base,
+                a_expert,
+                contact_label=None,
+                batch=batch,
+            )
+            output_dict = {key: value.detach().item() for key, value in losses.items()}
+            return losses["loss"], output_dict
+
+        if mode == "fast_wrist":
             if a_base.dim() != 3 or a_base.size(1) < 2:
                 raise ValueError(
                     "Fast Wrist Residual requires policy.seq_len >= 2 so the "
@@ -618,7 +765,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
         contact_label: Optional[Tensor],
         batch: Optional[dict[str, Tensor]] = None,
     ) -> dict[str, Tensor]:
-        if _residual_merge_mode(self.config) == "fast_wrist":
+        if _is_fast_wrist_mode(self.config):
             if not isinstance(out, FastWristResidualOutput):
                 raise TypeError("Fast Wrist Residual objective requires FastWristResidualOutput.")
             return self._compute_fast_wrist_losses(out=out, a_base=a_base, a_expert=a_expert)
@@ -722,14 +869,29 @@ class HFRVLAPolicy(SmolVLAPolicy):
             raise ValueError(f"a_base must be 2-D or 3-D, got {a_base.dim()}-D")
 
         target_delta = a_expert_curr - a_base_curr
-        l_delta = F.mse_loss(out.delta_a, target_delta)
+        l_delta = F.smooth_l1_loss(out.delta_a, target_delta)
+        delta_clip = self._clip_fast_residual(out.delta_a)
+        delta_exec = _fast_residual_alpha(self.config) * delta_clip
+        a_final = a_base_curr + delta_exec
+        l_final = F.smooth_l1_loss(a_final, a_expert_curr)
+        l_residual = delta_exec.pow(2).mean()
+        l_clip = F.relu(out.delta_a.abs() - self._fast_residual_cap()).mean()
+        total = (
+            float(getattr(self.config, "fast_wrist_loss_lambda_delta", 1.0)) * l_delta
+            + float(getattr(self.config, "fast_wrist_loss_lambda_final", 1.0)) * l_final
+            + float(getattr(self.config, "fast_wrist_loss_lambda_residual", 0.0)) * l_residual
+            + float(getattr(self.config, "fast_wrist_loss_lambda_clip", 0.0)) * l_clip
+        )
         losses: dict[str, Tensor] = {
             "delta": l_delta,
-            "loss": l_delta,
+            "final": l_final,
+            "residual_reg": l_residual,
+            "clip_penalty": l_clip,
+            "loss": total,
             "delta_norm": out.delta_a.norm(dim=-1).mean().detach(),
             "target_delta_norm": target_delta.norm(dim=-1).mean().detach(),
             "delta_clip_fraction": (
-                (out.delta_a.abs() > float(self.config.delta_max))
+                (out.delta_a.abs() > self._fast_residual_cap())
                 .to(dtype=out.delta_a.dtype)
                 .mean()
                 .detach()

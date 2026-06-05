@@ -1,11 +1,16 @@
 # lerobot_policy_hfrvla
 
-**Hierarchical Fast-Reactive VLA** — a LeRobot plugin that mounts a small, trainable, wrist-camera residual policy on top of a frozen SmolVLA. The default gated fast module emits `(delta_a, gate, contact_aux)` and computes `a_base + gate * clip(delta_a)`. The optional A2C2-Wrist baseline uses a stateless feed-forward correction head without gate/contact/GRU and computes `a_base + alpha * clip(delta_a)`.
+**Hierarchical Fast-Reactive VLA** — a LeRobot plugin that mounts a small,
+trainable, wrist-camera residual policy on top of a frozen SmolVLA. The current
+paper-facing path is Fast Wrist Residual (FWR): `fast_wrist` and
+`fast_wrist_chunk` compute `a_base + alpha * clip(delta_a)` without the older
+gate/contact/GRU machinery. `fast_wrist_chunk` additionally attends over the
+full frozen base action chunk.
 
-Training uses the same deployed action form: the delta target is clipped to
-the deployable residual range, the gate only opens when the clipped residual
-clears an improvement margin, and preservation losses penalize corrections
-that make the merged action worse than the frozen base policy.
+The legacy gated path is still loadable for old scripts and checkpoints, but it
+is not the active paper mainline. New experiments should prefer
+`RESIDUAL_MERGE_MODE=fast_wrist_chunk` with a schema-v3 fast-cache unless they
+are explicitly reproducing the retired gated objective.
 
 Design contract: `Hierachical_fast_reactive/paper/notes/implementation_spec.md`.
 
@@ -43,10 +48,11 @@ cd ~/Patrick/VLA_research/Hierachical_fast_reactive
 
 ~/Robotic_infra/lerobot/.venv/bin/python scripts/build_hfrvla_fastcache.py \
     --source-root checkpoints/HFRVLA_libero_v1_merged_reindexed \
-    --cache-root checkpoints/HFRVLA_libero_v1_fastcache_v2
+    --cache-root checkpoints/HFRVLA_libero_v1_fastcache_v3_plan50 \
+    --chunk-len 50
 
 HFRVLA_DATASET_BACKEND=fastcache \
-HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_v2 \
+HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_v3_plan50 \
 SEQ_LEN=4 \
 ~/Robotic_infra/lerobot/.venv/bin/python scripts/train_via_lerobot.py \
     --dataset.repo_id=HFRVLA_libero_v1 \
@@ -55,7 +61,9 @@ SEQ_LEN=4 \
 ```
 
 Fast-cache storage is frame-level; `SEQ_LEN` is only a training-time windowing
-choice passed to `--policy.seq_len`.
+choice passed to `--policy.seq_len`. Schema v3 stores `a_base_chunk` and
+`chunk_step_idx` for `RESIDUAL_MERGE_MODE=fast_wrist_chunk`; schema v1/v2
+caches remain loadable for older modes.
 
 ## Registration
 

@@ -1,3 +1,7 @@
 [doc]
 name = "main"
-src_entrypoint = "src/main.tex"
+bundle = "https://data1.fullyjustified.net/tlextras-2022.0r0.tar"
+
+[[output]]
+name = "default"
+type = "pdf"

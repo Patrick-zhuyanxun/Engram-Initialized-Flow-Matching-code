@@ -78,13 +78,14 @@ def build_eval_command(
         "--env.type=libero",
         f"--env.task={spec.suite}",
         f"--eval.n_episodes={spec.n_episodes_per_task}",
-        "--eval.batch_size=1",
+        f"--eval.batch_size={spec.eval_batch_size}",
         f"--output_dir={output_dir}",
         f"--seed={spec.seed}",
     ]
     if task_ids:
         cmd.insert(-3, f"--env.task_ids={task_ids}")
     if spec.policy == "hfrvla" and spec.alpha is not None:
+        cmd.append(f"--policy.fast_residual_alpha={spec.alpha}")
         cmd.append(f"--policy.a2c2_alpha={spec.alpha}")
     if spec.policy == "hfrvla" and spec.eval_delta_max is not None:
         cmd.append(f"--policy.delta_max={spec.eval_delta_max}")
@@ -137,6 +138,7 @@ def build_specs(args: argparse.Namespace) -> list[EvalSpec]:
                         seed=args.seed,
                         n_episodes_per_task=args.n_episodes,
                         device=args.device,
+                        eval_batch_size=args.eval_batch_size,
                         planning_chunk_size=chunk_size,
                         policy_config_n_action_steps=metadata.policy_config_n_action_steps,
                         residual_clip_mode=residual_clip_mode,
@@ -212,6 +214,7 @@ def parse_args() -> argparse.Namespace:
         help="delta_max override used when --hfrvla-residual-clip-mode=none.",
     )
     p.add_argument("--n-episodes", type=int, default=5, help="Episodes per task.")
+    p.add_argument("--eval-batch-size", type=int, default=1, help="Parallel eval envs per task.")
     p.add_argument("--task-ids", default=None, help="Optional LIBERO task id list, e.g. '[0]'.")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default="cuda")

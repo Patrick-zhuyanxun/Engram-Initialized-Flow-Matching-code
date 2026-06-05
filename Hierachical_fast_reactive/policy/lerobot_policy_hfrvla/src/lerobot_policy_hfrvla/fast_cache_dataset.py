@@ -23,12 +23,16 @@ from torch.utils.data import Dataset
 ACTION = "action"
 OBS_STATE = "observation.state"
 
-CACHE_SCHEMA_VERSION = 2
-SUPPORTED_CACHE_SCHEMA_VERSIONS = {1, CACHE_SCHEMA_VERSION}
+CACHE_SCHEMA_VERSION = 3
+SUPPORTED_CACHE_SCHEMA_VERSIONS = {1, 2, CACHE_SCHEMA_VERSION}
 POLICY_KEY_TO_ARRAY = {
     OBS_STATE: "state",
     ACTION: "action",
     "observation.extra.a_base": "a_base",
+    "observation.extra.a_base_chunk": "a_base_chunk",
+    "observation.extra.chunk_step_idx": "chunk_step_idx",
+    "observation.extra.chunk_age_steps": "chunk_age_steps",
+    "observation.extra.chunk_age_norm": "chunk_age_norm",
     "observation.extra.k_idx_norm": "k_idx_norm",
     "observation.extra.z_goal": "z_goal",
     "observation.extra.z_phase": "z_phase",

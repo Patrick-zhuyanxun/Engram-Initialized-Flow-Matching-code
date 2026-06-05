@@ -19,12 +19,14 @@ import lerobot.scripts.lerobot_train as lt
 import lerobot.datasets.factory as dataset_factory
 import lerobot.datasets.dataset_reader as dataset_reader_module
 import pyarrow.dataset as pa_ds
+import torch
 from lerobot.utils.constants import ACTION, OBS_PREFIX, REWARD
 from lerobot.utils.utils import SuppressProgressBars
 
 _STEP = {"value": 0}
 _ORIGINAL_UPDATE_POLICY = lt.update_policy
 _ORIGINAL_MAKE_DATASET = lt.make_dataset
+_ORIGINAL_DATALOADER = torch.utils.data.DataLoader
 
 HFRVLA_OFFLINE_REQUIRED_COLUMNS = {
     "index",
@@ -41,6 +43,15 @@ HFRVLA_OFFLINE_REQUIRED_COLUMNS = {
     "observation.extra.dino_patches",
     "observation.extra.contact_label",
 }
+HFRVLA_OFFLINE_OPTIONAL_COLUMNS = {
+    "observation.extra.a_base_chunk",
+    "observation.extra.chunk_step_idx",
+    "observation.extra.chunk_age_steps",
+    "observation.extra.chunk_age_norm",
+}
+HFRVLA_OFFLINE_ALLOWED_COLUMNS = (
+    HFRVLA_OFFLINE_REQUIRED_COLUMNS | HFRVLA_OFFLINE_OPTIONAL_COLUMNS
+)
 
 _HFRVLA_OFFLINE_REQUIRED_TRAIN_COLUMNS = HFRVLA_OFFLINE_REQUIRED_COLUMNS - {
     "frame_index",
@@ -123,6 +134,28 @@ def _dataset_backend() -> str:
     return backend
 
 
+def _env_bool(name: str, *, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+class _PatchedDataLoader(_ORIGINAL_DATALOADER):
+    def __init__(self, *args, **kwargs):
+        if _dataset_backend() == "fastcache":
+            num_workers = int(kwargs.get("num_workers", 0) or 0)
+            if num_workers > 0:
+                if _env_bool("HFRVLA_DATALOADER_PERSISTENT_WORKERS", default=True):
+                    kwargs.setdefault("persistent_workers", True)
+
+                prefetch = os.environ.get("HFRVLA_DATALOADER_PREFETCH_FACTOR")
+                if prefetch:
+                    kwargs["prefetch_factor"] = int(prefetch)
+
+        super().__init__(*args, **kwargs)
+
+
 def _make_fastcache_dataset(cfg):
     root = os.environ.get("HFRVLA_FASTCACHE_ROOT")
     if not root:
@@ -135,11 +168,13 @@ def _make_fastcache_dataset(cfg):
 
     policy = getattr(cfg, "policy", cfg)
     seq_len = int(getattr(policy, "seq_len", 1))
+    residual_mode = str(getattr(policy, "residual_merge_mode", "gated")).strip().lower()
     cache_root = Path(root).expanduser()
     rollout_root_raw = os.environ.get("HFRVLA_FASTCACHE_ROLLOUT_ROOT", "").strip()
     if rollout_root_raw:
         rollout_root = Path(rollout_root_raw).expanduser()
         dataset = HFRVLAFastCacheDataset(roots=[cache_root, rollout_root], seq_len=seq_len)
+        _validate_fastcache_for_policy(dataset, residual_mode=residual_mode)
         print(
             "[hfrvla-train] fast-cache dataset backend enabled "
             f"roots=[{cache_root}, {rollout_root}]",
@@ -148,6 +183,7 @@ def _make_fastcache_dataset(cfg):
         return dataset
 
     dataset = HFRVLAFastCacheDataset(cache_root, seq_len=seq_len)
+    _validate_fastcache_for_policy(dataset, residual_mode=residual_mode)
     print(
         f"[hfrvla-train] fast-cache dataset backend enabled root={cache_root}",
         flush=True,
@@ -155,12 +191,29 @@ def _make_fastcache_dataset(cfg):
     return dataset
 
 
+def _validate_fastcache_for_policy(dataset, *, residual_mode: str) -> None:
+    if residual_mode == "a2c2":
+        residual_mode = "fast_wrist"
+    if residual_mode != "fast_wrist_chunk":
+        return
+    required = {
+        "observation.extra.a_base_chunk",
+        "observation.extra.chunk_step_idx",
+    }
+    missing = required - set(dataset.info.get("features", {}))
+    if missing:
+        raise ValueError(
+            "RESIDUAL_MERGE_MODE=fast_wrist_chunk requires fast-cache schema v3 "
+            "with full base chunk fields. Missing: " + ", ".join(sorted(missing))
+        )
+
+
 def _offline_hfrvla_delta_timestamps(cfg, ds_meta) -> dict[str, list] | None:
     """Window only the columns consumed by offline fast-module training."""
     policy = getattr(cfg, "policy", cfg)
     delta_timestamps = {}
     for key in ds_meta.features:
-        if key not in HFRVLA_OFFLINE_REQUIRED_COLUMNS:
+        if key not in HFRVLA_OFFLINE_ALLOWED_COLUMNS:
             continue
         reward_delta_indices = getattr(policy, "reward_delta_indices", None)
         action_delta_indices = getattr(policy, "action_delta_indices", None)
@@ -179,7 +232,7 @@ def _offline_hfrvla_features(features: dict) -> dict:
     return {
         key: feature
         for key, feature in features.items()
-        if key in HFRVLA_OFFLINE_REQUIRED_COLUMNS
+        if key in HFRVLA_OFFLINE_ALLOWED_COLUMNS
     }
 
 
@@ -225,7 +278,7 @@ def _select_offline_hfrvla_columns(dataset):
             + ", ".join(sorted(missing))
         )
 
-    keep = [column for column in column_names if column in HFRVLA_OFFLINE_REQUIRED_COLUMNS]
+    keep = [column for column in column_names if column in HFRVLA_OFFLINE_ALLOWED_COLUMNS]
     reader.hf_dataset = hf_dataset.select_columns(keep)
     return dataset
 
@@ -255,6 +308,7 @@ def _patched_make_dataset(cfg):
 def main() -> None:
     lt.update_policy = _patched_update_policy
     lt.make_dataset = _patched_make_dataset
+    torch.utils.data.DataLoader = _PatchedDataLoader
     lt.main()
 
 

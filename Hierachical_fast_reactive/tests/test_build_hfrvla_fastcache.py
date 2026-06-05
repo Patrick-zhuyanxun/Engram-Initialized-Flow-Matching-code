@@ -7,7 +7,7 @@ import pandas as pd
 from scripts.build_hfrvla_fastcache import build_fast_cache
 
 
-def _write_source(root: Path) -> None:
+def _write_source(root: Path, *, include_generated_chunks: bool = False) -> None:
     (root / "data/chunk-000").mkdir(parents=True)
     (root / "meta/episodes/chunk-000").mkdir(parents=True)
     (root / "meta").mkdir(exist_ok=True)
@@ -50,6 +50,31 @@ def _write_source(root: Path) -> None:
             },
         },
     }
+    if include_generated_chunks:
+        info["features"].update(
+            {
+                "observation.extra.a_base_chunk": {
+                    "dtype": "float32",
+                    "shape": [50, 7],
+                    "names": None,
+                },
+                "observation.extra.chunk_step_idx": {
+                    "dtype": "int64",
+                    "shape": [1],
+                    "names": None,
+                },
+                "observation.extra.chunk_age_steps": {
+                    "dtype": "float32",
+                    "shape": [1],
+                    "names": None,
+                },
+                "observation.extra.chunk_age_norm": {
+                    "dtype": "float32",
+                    "shape": [1],
+                    "names": None,
+                },
+            }
+        )
     (root / "meta/info.json").write_text(json.dumps(info))
     (root / "meta/stats.json").write_text(
         json.dumps(
@@ -72,23 +97,33 @@ def _write_source(root: Path) -> None:
     ).to_parquet(root / "meta/episodes/chunk-000/file-000.parquet", index=False)
     rows = []
     for i in range(4):
-        rows.append(
-            {
-                "observation.state": np.full((8,), i, dtype=np.float32).tolist(),
-                "action": np.full((7,), i, dtype=np.float32).tolist(),
-                "observation.extra.a_base": np.full((7,), 1, dtype=np.float32).tolist(),
-                "observation.extra.k_idx_norm": np.array([i / 3], dtype=np.float32).tolist(),
-                "observation.extra.z_goal": np.full((960,), i, dtype=np.float32).tolist(),
-                "observation.extra.z_phase": np.full((480,), i, dtype=np.float32).tolist(),
-                "observation.extra.dino_patches": np.full(
-                    (196, 384), i, dtype=np.float32
-                ).tolist(),
-                "observation.extra.contact_label": np.array([0], dtype=np.float32).tolist(),
-                "episode_index": 0 if i < 2 else 1,
-                "task_index": 0 if i < 2 else 1,
-                "index": i,
-            }
-        )
+        row = {
+            "observation.state": np.full((8,), i, dtype=np.float32).tolist(),
+            "action": np.full((7,), i, dtype=np.float32).tolist(),
+            "observation.extra.a_base": np.full((7,), 1, dtype=np.float32).tolist(),
+            "observation.extra.k_idx_norm": np.array([i / 3], dtype=np.float32).tolist(),
+            "observation.extra.z_goal": np.full((960,), i, dtype=np.float32).tolist(),
+            "observation.extra.z_phase": np.full((480,), i, dtype=np.float32).tolist(),
+            "observation.extra.dino_patches": np.full(
+                (196, 384), i, dtype=np.float32
+            ).tolist(),
+            "observation.extra.contact_label": np.array([0], dtype=np.float32).tolist(),
+            "episode_index": 0 if i < 2 else 1,
+            "task_index": 0 if i < 2 else 1,
+            "index": i,
+        }
+        if include_generated_chunks:
+            chunk = np.full((50, 7), 100 + i, dtype=np.float32)
+            chunk[i % 2] = np.full((7,), 700 + i, dtype=np.float32)
+            row.update(
+                {
+                    "observation.extra.a_base_chunk": chunk.tolist(),
+                    "observation.extra.chunk_step_idx": np.array([i % 2], dtype=np.int64).tolist(),
+                    "observation.extra.chunk_age_steps": np.array([float(i % 2)], dtype=np.float32).tolist(),
+                    "observation.extra.chunk_age_norm": np.array([float(i % 2) / 49.0], dtype=np.float32).tolist(),
+                }
+            )
+        rows.append(row)
     pd.DataFrame(rows).to_parquet(root / "data/chunk-000/file-000.parquet", index=False)
 
 
@@ -100,8 +135,9 @@ def test_build_fast_cache_writes_float16_large_arrays(tmp_path):
     build_fast_cache(source, cache)
 
     meta = json.loads((cache / "meta.json").read_text())
-    assert meta["schema_version"] == 2
+    assert meta["schema_version"] == 3
     assert "seq_len" not in meta
+    assert meta["chunk_len"] == 50
     assert meta["total_frames"] == 4
     assert np.load(cache / "episode_starts.npy").tolist() == [0, 2]
     assert np.load(cache / "episode_ends.npy").tolist() == [2, 4]
@@ -109,6 +145,14 @@ def test_build_fast_cache_writes_float16_large_arrays(tmp_path):
     assert meta["index_arrays"]["task_index"]["array"] == "task_index.npy"
     assert np.load(cache / "z_goal.npy", mmap_mode="r").dtype == np.float16
     assert np.load(cache / "dino_patches.npy", mmap_mode="r").shape == (4, 196, 384)
+    assert np.load(cache / "a_base_chunk.npy", mmap_mode="r").shape == (4, 50, 7)
+    assert np.load(cache / "chunk_step_idx.npy", mmap_mode="r").shape == (4, 1)
+    assert np.load(cache / "chunk_step_idx.npy").dtype == np.int64
+    current_step = np.load(cache / "chunk_step_idx.npy")[3, 0]
+    assert np.allclose(
+        np.load(cache / "a_base.npy")[3],
+        np.load(cache / "a_base_chunk.npy")[3, current_step],
+    )
     assert np.load(cache / "y_correct.npy").dtype == np.uint8
     assert np.load(cache / "y_preserve.npy").dtype == np.uint8
     assert np.load(cache / "y_correct.npy").shape == (4,)
@@ -135,3 +179,21 @@ def test_build_fast_cache_static_y_preserve_marks_all_frames_preserve(tmp_path):
     assert np.load(cache / "y_preserve.npy").tolist() == [1, 1, 1, 1]
     assert meta["static_label_fractions"]["y_correct"] == 0.0
     assert meta["static_label_fractions"]["y_preserve"] == 1.0
+
+
+def test_build_fast_cache_preserves_recorded_generated_chunks_and_age(tmp_path):
+    source = tmp_path / "source"
+    cache = tmp_path / "cache"
+    _write_source(source, include_generated_chunks=True)
+
+    build_fast_cache(source, cache)
+
+    meta = json.loads((cache / "meta.json").read_text())
+    a_base_chunk = np.load(cache / "a_base_chunk.npy")
+    chunk_step_idx = np.load(cache / "chunk_step_idx.npy")
+
+    assert meta["features"]["observation.extra.a_base_chunk"]["array"] == "a_base_chunk.npy"
+    assert meta["features"]["observation.extra.chunk_age_steps"]["array"] == "chunk_age_steps.npy"
+    assert a_base_chunk[3, 1, 0] == 703
+    assert chunk_step_idx[:, 0].tolist() == [0, 1, 0, 1]
+    assert np.load(cache / "chunk_age_steps.npy")[:, 0].tolist() == [0.0, 1.0, 0.0, 1.0]

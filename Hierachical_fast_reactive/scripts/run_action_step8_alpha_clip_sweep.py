@@ -120,6 +120,7 @@ def build_specs(args: argparse.Namespace) -> list[EvalSpec]:
                         seed=args.seed,
                         n_episodes_per_task=args.n_episodes,
                         device=args.device,
+                        eval_batch_size=args.eval_batch_size,
                         planning_chunk_size=metadata.planning_chunk_size,
                         policy_config_n_action_steps=metadata.policy_config_n_action_steps,
                         residual_clip_mode="config",
@@ -200,6 +201,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--suites", default=",".join(DEFAULT_SUITES))
     p.add_argument("--hfrvla-policy", type=Path, default=DEFAULT_HFRVLA_POLICY)
     p.add_argument("--n-episodes", type=int, default=5, help="Episodes per task.")
+    p.add_argument("--eval-batch-size", type=int, default=3, help="Parallel eval envs per task.")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default="cuda")
     p.add_argument("--eval-root", type=Path, default=DEFAULT_EVAL_ROOT)

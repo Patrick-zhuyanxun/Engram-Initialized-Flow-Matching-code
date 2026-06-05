@@ -12,6 +12,7 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from lerobot_policy_hfrvla.configuration_hfrvla import HFRVLAConfig
 from lerobot_policy_hfrvla.dinov3_backbone import DINOv3Backbone
@@ -33,13 +34,10 @@ def _mlp(in_dim: int, hidden: int, out_dim: int) -> nn.Sequential:
 
 
 def _use_latent_context(config: HFRVLAConfig) -> bool:
-    return bool(
-        getattr(
-            config,
-            "fast_residual_use_latent_context",
-            getattr(config, "a2c2_use_latent_context", True),
-        )
-    )
+    value = getattr(config, "fast_residual_use_latent_context", None)
+    if value is None:
+        value = getattr(config, "a2c2_use_latent_context", True)
+    return bool(value)
 
 
 class FastWristResidualModule(nn.Module):
@@ -193,3 +191,147 @@ class FastWristResidualModule(nn.Module):
                 continue
             n += p.numel()
         return n
+
+
+class FastWristChunkResidualModule(FastWristResidualModule):
+    """Chunk-aware FWR-v2 head.
+
+    The wrist encoder is shared with FWR-v1, but this head attends over all
+    action tokens in the frozen SmolVLA planning chunk before predicting the
+    current-step residual.
+    """
+
+    def __init__(
+        self,
+        config: HFRVLAConfig,
+        action_dim: int,
+        proprio_dim: int,
+        zgoal_dim: int,
+        zphase_dim: int,
+    ) -> None:
+        super().__init__(
+            config=config,
+            action_dim=action_dim,
+            proprio_dim=proprio_dim,
+            zgoal_dim=zgoal_dim,
+            zphase_dim=zphase_dim,
+        )
+        d_pool = config.pool_query_dim
+        token_in = action_dim + 4
+        self.chunk_token_proj = nn.Sequential(
+            nn.Linear(token_in, d_pool),
+            nn.GELU(),
+            nn.Linear(d_pool, d_pool),
+        )
+        self.chunk_query_proj = _mlp(
+            d_pool + proprio_dim + action_dim + 1 + d_pool,
+            d_pool,
+            d_pool,
+        )
+        self.chunk_attn = nn.MultiheadAttention(
+            embed_dim=d_pool,
+            num_heads=config.pool_n_heads,
+            batch_first=True,
+        )
+        fuse_in = d_pool + proprio_dim + action_dim + 1 + d_pool + d_pool
+        self.fuser = nn.Sequential(
+            nn.Linear(fuse_in, d_pool),
+            nn.GELU(),
+            nn.Linear(d_pool, d_pool),
+            nn.GELU(),
+            nn.Linear(d_pool, action_dim),
+        )
+
+    def _chunk_tokens(
+        self,
+        a_base_chunk: torch.Tensor,
+        a_base_k: torch.Tensor,
+        chunk_step_idx: torch.Tensor,
+    ) -> torch.Tensor:
+        if a_base_chunk.dim() != 3:
+            raise ValueError(
+                "FastWristChunkResidualModule expects a_base_chunk shape "
+                f"(B, K, action_dim), got {tuple(a_base_chunk.shape)}"
+            )
+        if a_base_chunk.shape[-1] != self.action_dim:
+            raise ValueError(
+                f"a_base_chunk action dim {a_base_chunk.shape[-1]} != {self.action_dim}"
+            )
+
+        module_dtype = self.patch_proj.weight.dtype
+        chunk = a_base_chunk.to(dtype=module_dtype)
+        current = a_base_k.to(dtype=module_dtype)
+        batch, chunk_len, _ = chunk.shape
+        denom = max(1, chunk_len - 1)
+
+        step = chunk_step_idx.reshape(batch, -1)[:, 0].to(device=chunk.device)
+        step_float = step.to(dtype=module_dtype).clamp(0, chunk_len - 1)
+        j = torch.arange(chunk_len, device=chunk.device, dtype=module_dtype).view(1, chunk_len, 1)
+        j_norm = j / denom
+        rel = (j - step_float.view(batch, 1, 1)) / denom
+        abs_rel = rel.abs()
+        cos = F.cosine_similarity(
+            chunk,
+            current.unsqueeze(1).expand_as(chunk),
+            dim=-1,
+            eps=1e-6,
+        ).unsqueeze(-1)
+        token_features = torch.cat(
+            [
+                chunk,
+                j_norm.expand(batch, -1, -1),
+                rel,
+                abs_rel,
+                cos.to(dtype=module_dtype),
+            ],
+            dim=-1,
+        )
+        return self.chunk_token_proj(token_features)
+
+    def forward(
+        self,
+        wrist_rgb: Optional[torch.Tensor],
+        proprio: torch.Tensor,
+        a_base_k: torch.Tensor,
+        k_idx_norm: torch.Tensor,
+        z_goal: torch.Tensor,
+        z_phase: torch.Tensor,
+        a_base_chunk: torch.Tensor,
+        chunk_step_idx: torch.Tensor,
+        *,
+        dino_patches: Optional[torch.Tensor] = None,
+    ) -> FastWristResidualOutput:
+        """Run current-step residual prediction conditioned on the full chunk."""
+        if proprio.dim() != 2:
+            raise ValueError(
+                "FastWristChunkResidualModule expects single-step tensors; "
+                f"got proprio dim={proprio.dim()}"
+            )
+
+        module_dtype = self.patch_proj.weight.dtype
+        pooled = self._encode_wrist(wrist_rgb, z_goal, z_phase, dino_patches)
+        proprio = proprio.to(dtype=module_dtype)
+        a_base_k = a_base_k.to(dtype=module_dtype)
+        k_idx_norm = k_idx_norm.to(dtype=module_dtype)
+        z_phase = z_phase.to(dtype=module_dtype)
+
+        if _use_latent_context(self.config):
+            zphase_p = self.zphase_proj(z_phase)
+        else:
+            zphase_p = torch.zeros(
+                z_phase.shape[0],
+                self.config.pool_query_dim,
+                device=z_phase.device,
+                dtype=module_dtype,
+            )
+
+        tokens = self._chunk_tokens(a_base_chunk, a_base_k, chunk_step_idx)
+        query_in = torch.cat([pooled, proprio, a_base_k, k_idx_norm, zphase_p], dim=-1)
+        query = self.chunk_query_proj(query_in).unsqueeze(1)
+        chunk_ctx, _ = self.chunk_attn(query, tokens, tokens)
+        chunk_ctx = chunk_ctx.squeeze(1)
+        fused = torch.cat(
+            [pooled, proprio, a_base_k, k_idx_norm, zphase_p, chunk_ctx],
+            dim=-1,
+        )
+        return FastWristResidualOutput(delta_a=self.fuser(fused))

@@ -126,6 +126,47 @@ def _add_v2_labels(
     np.save(root / "y_preserve.npy", np.array(y_preserve, dtype=np.uint8))
 
 
+def _add_v3_chunk_fields(root: Path, *, chunk_len: int = 4) -> None:
+    meta = json.loads((root / "meta.json").read_text())
+    meta["schema_version"] = 3
+    meta["chunk_len"] = chunk_len
+    meta["features"]["observation.extra.a_base_chunk"] = {
+        "array": "a_base_chunk.npy",
+        "dtype": "float32",
+        "shape": [6, chunk_len, 7],
+    }
+    meta["features"]["observation.extra.chunk_step_idx"] = {
+        "array": "chunk_step_idx.npy",
+        "dtype": "int64",
+        "shape": [6, 1],
+    }
+    meta["features"]["observation.extra.chunk_age_steps"] = {
+        "array": "chunk_age_steps.npy",
+        "dtype": "float32",
+        "shape": [6, 1],
+    }
+    meta["features"]["observation.extra.chunk_age_norm"] = {
+        "array": "chunk_age_norm.npy",
+        "dtype": "float32",
+        "shape": [6, 1],
+    }
+    (root / "meta.json").write_text(json.dumps(meta))
+
+    chunks = np.zeros((6, chunk_len, 7), dtype=np.float32)
+    step_idx = np.zeros((6, 1), dtype=np.int64)
+    for frame in range(6):
+        chunk_start = 0 if frame < 3 else 3
+        local_step = frame - chunk_start
+        for j in range(chunk_len):
+            chunks[frame, j] = chunk_start + j + 1
+        chunks[frame, local_step] = np.ones((7,), dtype=np.float32)
+        step_idx[frame, 0] = local_step
+    np.save(root / "a_base_chunk.npy", chunks)
+    np.save(root / "chunk_step_idx.npy", step_idx)
+    np.save(root / "chunk_age_steps.npy", step_idx.astype(np.float32))
+    np.save(root / "chunk_age_norm.npy", step_idx.astype(np.float32) / max(1, chunk_len - 1))
+
+
 def test_load_fast_cache_metadata_validates_required_arrays(tmp_path):
     cache_root = tmp_path / "cache"
     _write_cache(cache_root)
@@ -186,6 +227,27 @@ def test_fast_cache_dataset_returns_v2_static_labels(tmp_path):
     assert sample["observation.extra.y_preserve"].dtype == torch.uint8
     assert sample["observation.extra.y_correct"].tolist() == [0, 0, 1]
     assert batch["observation.extra.y_correct"].shape == (2, 3)
+
+
+def test_fast_cache_dataset_returns_v3_chunk_fields_and_preserves_current_base(tmp_path):
+    cache_root = tmp_path / "cache"
+    _write_cache(cache_root)
+    _add_v3_chunk_fields(cache_root, chunk_len=4)
+    dataset = HFRVLAFastCacheDataset(cache_root, seq_len=3)
+
+    sample = dataset[4]
+
+    assert dataset.info["schema_version"] == 3
+    assert dataset.info["chunk_len"] == 4
+    assert sample["observation.extra.a_base_chunk"].shape == (3, 4, 7)
+    assert sample["observation.extra.chunk_step_idx"].shape == (3, 1)
+    assert sample["observation.extra.chunk_age_steps"].shape == (3, 1)
+    assert sample["observation.extra.chunk_age_norm"].shape == (3, 1)
+    assert sample["observation.extra.chunk_step_idx"].dtype == torch.int64
+    current_step = int(sample["observation.extra.chunk_step_idx"][-1, 0].item())
+    current_chunk_action = sample["observation.extra.a_base_chunk"][-1, current_step]
+    assert torch.equal(sample["observation.extra.a_base"][-1], current_chunk_action)
+    assert sample["observation.extra.chunk_age_steps"][-1, 0].item() == float(current_step)
 
 
 def test_fast_cache_dataset_accepts_v1_without_static_labels(tmp_path):

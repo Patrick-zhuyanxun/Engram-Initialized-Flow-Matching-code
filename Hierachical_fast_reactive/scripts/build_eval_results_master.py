@@ -101,6 +101,26 @@ METADATA_PROFILES = {
         "save_freq": "25000",
         "log_freq": "100",
     },
+    "hfrvla_fwr_chunk_b512_50k": {
+        "policy_family": "hfrvla",
+        "checkpoint_id": "hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda",
+        "checkpoint_path": "checkpoints/hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda",
+        "train_run_name": "hfrvla_fwr_chunk_seq2_b512_50k",
+        "train_steps": "50000",
+        "dataset_id": "HFRVLA_libero_v1_fastcache_v3_plan50",
+        "dataset_backend": "fastcache_v3",
+        "seq_len": "2",
+        "residual_merge_mode": "fast_wrist_chunk",
+        "latent_context": "true",
+        "train_alpha": "1.0",
+        "config_alpha": "1.0",
+        "lr": "3e-4",
+        "weight_decay": "1e-5",
+        "batch_size": "512",
+        "num_workers": "8",
+        "save_freq": "25000",
+        "log_freq": "100",
+    },
     "smolvla_libero": {
         "policy_family": "smolvla",
         "checkpoint_id": "smolvla_libero",
@@ -133,6 +153,18 @@ SWEEP_PROFILES = {
     "hfrvla_lrwd_alpha075_clip02_eval": {
         "sweep_type": "learning_rate_weight_decay_sweep",
         "comparison_axis": "learning_rate_weight_decay",
+    },
+    "fwr_chunk_plan50_exec50_eval": {
+        "sweep_type": "matched_planning_execution_sweep",
+        "comparison_axis": "planning_and_execution_chunk_size",
+    },
+    "fwr_action_steps_10x10": {
+        "sweep_type": "execution_replan_sweep",
+        "comparison_axis": "execution_chunk_size",
+    },
+    "fwr_chunk_size_10x10": {
+        "sweep_type": "matched_planning_execution_sweep",
+        "comparison_axis": "planning_and_execution_chunk_size",
     },
 }
 

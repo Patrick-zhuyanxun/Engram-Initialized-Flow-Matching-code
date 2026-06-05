@@ -22,11 +22,17 @@ After recording, lerobot-train can consume the dataset with:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
+from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
+import numpy as np
+import pandas as pd
 import torch
+from PIL import Image
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 HFRVLA_CACHE_ROOT = Path(
@@ -133,6 +139,13 @@ def parse_args() -> argparse.Namespace:
              "already LIBERO-shaped. This records weak/misaligned a_base features "
              "unless you know exactly why you need it.",
     )
+    parser.add_argument(
+        "--source-reader",
+        choices=["auto", "lerobot", "parquet"],
+        default="auto",
+        help="Source-side reader. 'parquet' streams local LeRobot parquet files "
+             "directly and avoids expensive HF Datasets materialization for large shards.",
+    )
     parser.add_argument("--device", default="cuda")
     return parser.parse_args()
 
@@ -172,10 +185,222 @@ def _img_for_write(image: torch.Tensor) -> torch.Tensor:
     return x.clamp(0, 255).to(torch.uint8).cpu()
 
 
-def _episode_bounds(src: LeRobotDataset, ep_idx: int) -> tuple[int, int, str]:
+def _source_total_episodes(src_root: Path | None) -> int | None:
+    if src_root is None:
+        return None
+    info_path = src_root / "meta/info.json"
+    if not info_path.exists():
+        return None
+    return int(json.loads(info_path.read_text())["total_episodes"])
+
+
+def _resolve_episode_indices(
+    *,
+    total_episodes: int,
+    ep_from: int,
+    ep_to: int | None,
+    max_episodes: int | None,
+) -> list[int]:
+    start = max(0, int(ep_from))
+    end = int(total_episodes) if ep_to is None else min(int(ep_to), int(total_episodes))
+    if max_episodes is not None:
+        end = min(end, start + int(max_episodes))
+    if start >= end:
+        raise ValueError(
+            f"empty range: ep_from={start} ep_to={end} "
+            f"(source has {total_episodes} episodes)"
+        )
+    return list(range(start, end))
+
+
+def _stats_json_to_tensors(stats: dict) -> dict[str, dict[str, torch.Tensor]]:
+    tensor_stats = {}
+    for key, feature_stats in stats.items():
+        tensor_stats[key] = {
+            stat_name: torch.as_tensor(value, dtype=torch.float32)
+            for stat_name, value in feature_stats.items()
+        }
+    return tensor_stats
+
+
+def _decode_lerobot_image(value: dict | bytes | bytearray | memoryview, root: Path) -> torch.Tensor:
+    if isinstance(value, dict):
+        image_bytes = value.get("bytes")
+        image_path = value.get("path")
+    else:
+        image_bytes = value
+        image_path = None
+
+    if image_bytes is None:
+        if not image_path:
+            raise ValueError("LeRobot image entry has neither bytes nor path")
+        image_file = Path(image_path)
+        if not image_file.is_absolute():
+            image_file = root / image_file
+        image_bytes = image_file.read_bytes()
+
+    image = Image.open(BytesIO(bytes(image_bytes))).convert("RGB")
+    array = np.asarray(image, dtype=np.float32) / 255.0
+    return torch.from_numpy(array).permute(2, 0, 1).contiguous()
+
+
+class _LocalParquetEpisodeSource:
+    """Small source-side reader for local LeRobotDataset v3 parquet roots."""
+
+    _DATA_COLUMNS = [
+        "observation.images.image",
+        "observation.images.image2",
+        "observation.state",
+        "action",
+        "timestamp",
+        "frame_index",
+        "episode_index",
+        "index",
+        "task_index",
+    ]
+
+    def __init__(self, root: str | Path):
+        self.root = Path(root)
+        info_path = self.root / "meta/info.json"
+        episodes_root = self.root / "meta/episodes"
+        tasks_path = self.root / "meta/tasks.parquet"
+        if not info_path.exists() or not episodes_root.exists() or not tasks_path.exists():
+            raise FileNotFoundError(
+                f"{self.root} is missing required LeRobotDataset metadata"
+            )
+
+        self.info = json.loads(info_path.read_text())
+        self.num_episodes = int(self.info["total_episodes"])
+        self.total_frames = int(self.info["total_frames"])
+        stats_path = self.root / "meta/stats.json"
+        stats = json.loads(stats_path.read_text()) if stats_path.exists() else {}
+        self.meta = SimpleNamespace(stats=_stats_json_to_tensors(stats))
+
+        episode_files = sorted(episodes_root.glob("chunk-*/*.parquet"))
+        if not episode_files:
+            raise FileNotFoundError(f"No episode metadata parquet files under {episodes_root}")
+        episodes = pd.concat(
+            [pd.read_parquet(path) for path in episode_files],
+            ignore_index=True,
+        ).sort_values("episode_index")
+        self._episodes = episodes.set_index("episode_index", drop=False)
+
+        tasks_df = pd.read_parquet(tasks_path)
+        if "task_index" in tasks_df.columns:
+            if "task" in tasks_df.columns:
+                task_strings = tasks_df["task"].tolist()
+            else:
+                task_strings = list(tasks_df.index)
+            self._task_by_index = {
+                int(task_idx): str(task)
+                for task_idx, task in zip(tasks_df["task_index"].tolist(), task_strings, strict=True)
+            }
+        else:
+            self._task_by_index = {idx: str(task) for idx, task in enumerate(tasks_df.index)}
+
+        self._frame_to_chunk = np.full(self.total_frames, -1, dtype=np.int64)
+        self._frame_to_file = np.full(self.total_frames, -1, dtype=np.int64)
+        data_files = sorted((self.root / "data").glob("chunk-*/*.parquet"))
+        if not data_files:
+            raise FileNotFoundError(f"No data parquet files under {self.root / 'data'}")
+        for path in data_files:
+            chunk_index = int(path.parent.name.split("-")[-1])
+            file_index = int(path.stem.split("-")[-1])
+            index_df = pd.read_parquet(path, columns=["index"])
+            if len(index_df) == 0:
+                continue
+            indices = index_df["index"].to_numpy(dtype=np.int64)
+            self._frame_to_chunk[indices] = chunk_index
+            self._frame_to_file[indices] = file_index
+
+        self._cached_chunk_index: int | None = None
+        self._cached_file_index: int | None = None
+        self._cached_df: pd.DataFrame | None = None
+        self._cached_positions: dict[int, int] = {}
+
+    def episode_bounds(self, ep_idx: int) -> tuple[int, int, str]:
+        row = self._episodes.loc[int(ep_idx)]
+        task = row.get("tasks", None)
+        if isinstance(task, np.ndarray):
+            task = task.tolist()
+        if isinstance(task, (list, tuple)) and task:
+            task_text = str(task[0])
+        else:
+            task_text = self._task_by_index.get(int(row.get("task_index", -1)), "do the task")
+        return int(row["dataset_from_index"]), int(row["dataset_to_index"]), task_text
+
+    def _data_frame(self, chunk_index: int, file_index: int) -> pd.DataFrame:
+        if (
+            self._cached_df is not None
+            and self._cached_chunk_index == chunk_index
+            and self._cached_file_index == file_index
+        ):
+            return self._cached_df
+
+        path = self.root / "data" / f"chunk-{chunk_index:03d}" / f"file-{file_index:03d}.parquet"
+        if not path.exists():
+            raise FileNotFoundError(path)
+        df = pd.read_parquet(path, columns=self._DATA_COLUMNS)
+        self._cached_chunk_index = int(chunk_index)
+        self._cached_file_index = int(file_index)
+        self._cached_df = df
+        self._cached_positions = {
+            int(frame_index): idx
+            for idx, frame_index in enumerate(df["index"].to_numpy())
+        }
+        return df
+
+    def __getitem__(self, frame_index: int) -> dict:
+        frame_index = int(frame_index)
+        if frame_index < 0 or frame_index >= self.total_frames:
+            raise IndexError(frame_index)
+        chunk_index = int(self._frame_to_chunk[frame_index])
+        file_index = int(self._frame_to_file[frame_index])
+        if chunk_index < 0 or file_index < 0:
+            raise IndexError(f"frame {frame_index} is not covered by episode metadata")
+
+        df = self._data_frame(chunk_index, file_index)
+        row = df.iloc[self._cached_positions[frame_index]]
+        task_index = int(row["task_index"])
+        return {
+            "observation.images.image": _decode_lerobot_image(
+                row["observation.images.image"],
+                self.root,
+            ),
+            "observation.images.image2": _decode_lerobot_image(
+                row["observation.images.image2"],
+                self.root,
+            ),
+            "observation.state": torch.as_tensor(
+                np.asarray(row["observation.state"], dtype=np.float32).copy(),
+                dtype=torch.float32,
+            ),
+            "action": torch.as_tensor(
+                np.asarray(row["action"], dtype=np.float32).copy(),
+                dtype=torch.float32,
+            ),
+            "timestamp": torch.tensor(float(row["timestamp"]), dtype=torch.float32),
+            "frame_index": torch.tensor(int(row["frame_index"]), dtype=torch.int64),
+            "episode_index": torch.tensor(int(row["episode_index"]), dtype=torch.int64),
+            "index": torch.tensor(int(row["index"]), dtype=torch.int64),
+            "task_index": torch.tensor(task_index, dtype=torch.int64),
+            "task": self._task_by_index.get(task_index, "do the task"),
+        }
+
+
+def _episode_bounds(src, ep_idx: int) -> tuple[int, int, str]:
+    if hasattr(src, "episode_bounds"):
+        return src.episode_bounds(ep_idx)
     ep_meta = src.meta.episodes[ep_idx]
-    ep_from = int(ep_meta["dataset_from_index"])
-    ep_to = int(ep_meta["dataset_to_index"])
+    ep_from_abs = int(ep_meta["dataset_from_index"])
+    ep_to_abs = int(ep_meta["dataset_to_index"])
+    index_map = getattr(getattr(src, "reader", None), "_absolute_to_relative_idx", None)
+    if index_map is None:
+        ep_from = ep_from_abs
+        ep_to = ep_to_abs
+    else:
+        ep_from = int(index_map[ep_from_abs])
+        ep_to = int(index_map[ep_to_abs - 1]) + 1
     ep_task = (
         ep_meta["tasks"][0]
         if isinstance(ep_meta.get("tasks"), list) and ep_meta["tasks"]
@@ -184,9 +409,107 @@ def _episode_bounds(src: LeRobotDataset, ep_idx: int) -> tuple[int, int, str]:
     return ep_from, ep_to, ep_task
 
 
+def _basic_feature_stats(
+    array: np.ndarray,
+    *,
+    axis: int | tuple[int, ...] | None,
+    keepdims: bool,
+    quantile_list: list[float] | None,
+) -> dict[str, np.ndarray]:
+    from lerobot.datasets import compute_stats as lr_compute_stats
+
+    original_shape = array.shape
+    reshaped, sample_count = lr_compute_stats._prepare_array_for_stats(array, axis)
+    stats = lr_compute_stats._compute_basic_stats(
+        reshaped,
+        sample_count,
+        quantile_list or lr_compute_stats.DEFAULT_QUANTILES,
+    )
+    return lr_compute_stats._reshape_stats_by_axis(
+        stats,
+        axis,
+        keepdims,
+        original_shape,
+    )
+
+
+def _compute_episode_stats_basic_fallback(
+    episode_data: dict[str, list[str] | np.ndarray],
+    features: dict,
+    quantile_list: list[float] | None = None,
+) -> dict:
+    """Compute episode stats without histogram bins.
+
+    LeRobot's streaming quantile stats can fail on constant high-dimensional
+    generated chunk fields because numpy requires strictly increasing histogram
+    bin edges. Recording only needs valid per-feature stats, so this fallback
+    uses exact numpy reductions/quantiles instead of histograms.
+    """
+    from lerobot.datasets import compute_stats as lr_compute_stats
+
+    ep_stats = {}
+    for key, data in episode_data.items():
+        feature = features[key]
+        if feature["dtype"] == "string":
+            continue
+
+        if feature["dtype"] in ["image", "video"]:
+            ep_ft_array = lr_compute_stats.sample_images(data)
+            stats = _basic_feature_stats(
+                ep_ft_array,
+                axis=(0, 2, 3),
+                keepdims=True,
+                quantile_list=quantile_list,
+            )
+            ep_stats[key] = {
+                k: v if k == "count" else np.squeeze(v / 255.0, axis=0)
+                for k, v in stats.items()
+            }
+            continue
+
+        ep_ft_array = np.asarray(data)
+        ep_stats[key] = _basic_feature_stats(
+            ep_ft_array,
+            axis=0,
+            keepdims=ep_ft_array.ndim == 1,
+            quantile_list=quantile_list,
+        )
+
+    return ep_stats
+
+
+def _install_recording_stats_fallback() -> None:
+    import lerobot.datasets.dataset_writer as dataset_writer
+
+    original = dataset_writer.compute_episode_stats
+    if getattr(original, "_hfrvla_stats_fallback", False):
+        return
+
+    def _wrapped_compute_episode_stats(episode_data, features, quantile_list=None):
+        try:
+            return original(episode_data, features, quantile_list=quantile_list)
+        except ValueError as exc:
+            if "`bins` must increase monotonically" not in str(exc):
+                raise
+            print(
+                "[record] LeRobot stats histogram fallback activated for "
+                "constant generated chunk fields.",
+                flush=True,
+            )
+            return _compute_episode_stats_basic_fallback(
+                episode_data,
+                features,
+                quantile_list=quantile_list,
+            )
+
+    _wrapped_compute_episode_stats._hfrvla_stats_fallback = True
+    dataset_writer.compute_episode_stats = _wrapped_compute_episode_stats
+
+
 def main() -> None:
     args = parse_args()
     device = torch.device(args.device)
+    _install_recording_stats_fallback()
 
     raw_smolvla_config = load_policy_config_json(args.smolvla)
     try:
@@ -200,29 +523,54 @@ def main() -> None:
 
     args.out_root.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"[record] loading source dataset: {args.src_repo_id}", flush=True)
-    src_episodes = list(range(args.max_episodes)) if args.max_episodes is not None else None
-    src = LeRobotDataset(
-        args.src_repo_id,
-        root=args.src_root,
-        episodes=src_episodes,
-    )
-    n_total = int(src.num_episodes)
+    source_total = _source_total_episodes(args.src_root)
+    src_episodes = None
+    episode_indices = None
+    if source_total is not None:
+        try:
+            episode_indices = _resolve_episode_indices(
+                total_episodes=source_total,
+                ep_from=args.ep_from,
+                ep_to=args.ep_to,
+                max_episodes=args.max_episodes,
+            )
+        except ValueError as exc:
+            raise SystemExit(f"[record] {exc}") from exc
+        src_episodes = episode_indices
 
-    # Resolve the [ep_from, ep_to) range to actually record.
-    ep_from = max(0, int(args.ep_from))
-    ep_to = n_total if args.ep_to is None else min(int(args.ep_to), n_total)
-    if args.max_episodes is not None:
-        ep_to = min(ep_to, ep_from + args.max_episodes)
-    if ep_from >= ep_to:
-        raise SystemExit(
-            f"[record] empty range: ep_from={ep_from} ep_to={ep_to} "
-            f"(source has {n_total} episodes)"
+    source_reader = args.source_reader
+    if source_reader == "auto":
+        source_reader = "parquet" if args.src_root is not None and (args.src_root / "meta/info.json").exists() else "lerobot"
+
+    print(
+        f"[record] loading source dataset: {args.src_repo_id} "
+        f"(reader={source_reader})",
+        flush=True,
+    )
+    if source_reader == "parquet":
+        if args.src_root is None:
+            raise SystemExit("[record] --source-reader parquet requires --src-root")
+        src = _LocalParquetEpisodeSource(args.src_root)
+    else:
+        src = LeRobotDataset(
+            args.src_repo_id,
+            root=args.src_root,
+            episodes=src_episodes,
         )
-    episode_indices = list(range(ep_from, ep_to))
+    n_total = source_total if source_total is not None else int(src.num_episodes)
+    if episode_indices is None:
+        try:
+            episode_indices = _resolve_episode_indices(
+                total_episodes=n_total,
+                ep_from=args.ep_from,
+                ep_to=args.ep_to,
+                max_episodes=args.max_episodes,
+            )
+        except ValueError as exc:
+            raise SystemExit(f"[record] {exc}") from exc
     print(
         f"[record] source has {n_total} episodes; recording shard "
-        f"[{ep_from}, {ep_to}) = {len(episode_indices)} episodes",
+        f"[{episode_indices[0]}, {episode_indices[-1] + 1}) = {len(episode_indices)} episodes",
         flush=True,
     )
 
@@ -248,6 +596,7 @@ def main() -> None:
     expert_hidden = int(policy.model.vlm_with_expert.expert_hidden_size)
     dino_dim = int(config.dinov3_feature_dim)
     dino_npatch = int(config.dinov3_num_patches)
+    chunk_len = int(config.chunk_size)
     n_action_steps = int(config.n_action_steps)
 
     dino = DINOv3Backbone(
@@ -288,6 +637,26 @@ def main() -> None:
             "names": None,
         },
         "observation.extra.a_base": {"dtype": "float32", "shape": (7,), "names": None},
+        "observation.extra.a_base_chunk": {
+            "dtype": "float32",
+            "shape": (chunk_len, 7),
+            "names": None,
+        },
+        "observation.extra.chunk_step_idx": {
+            "dtype": "int64",
+            "shape": (1,),
+            "names": None,
+        },
+        "observation.extra.chunk_age_steps": {
+            "dtype": "float32",
+            "shape": (1,),
+            "names": None,
+        },
+        "observation.extra.chunk_age_norm": {
+            "dtype": "float32",
+            "shape": (1,),
+            "names": None,
+        },
         "observation.extra.k_idx_norm": {
             "dtype": "float32",
             "shape": (1,),
@@ -321,6 +690,8 @@ def main() -> None:
         policy.reset()
         cached_zgoal: torch.Tensor | None = None
         cached_zphase: torch.Tensor | None = None
+        current_a_base_chunk = torch.zeros(chunk_len, 7, dtype=torch.float32)
+        current_chunk_start_t = ep_from
         chunk_consumed = 0
 
         # ── Pass 1: SmolVLA chunk loop + collect everything except dino_patches.
@@ -351,15 +722,24 @@ def main() -> None:
                 policy._clear_hook_cache()
                 with torch.no_grad():
                     actions = policy._get_action_chunk(batch)
+                actions_cpu = actions.detach().squeeze(0).cpu().float()
+                current_a_base_chunk = torch.empty(chunk_len, actions_cpu.shape[-1], dtype=torch.float32)
+                usable = min(chunk_len, int(actions_cpu.shape[0]))
+                current_a_base_chunk[:usable] = actions_cpu[:usable]
+                if usable < chunk_len:
+                    current_a_base_chunk[usable:] = current_a_base_chunk[usable - 1]
                 policy._queues[ACTION].extend(actions.transpose(0, 1)[:n_action_steps])
                 cached_zgoal = policy._zgoal_cache
                 cached_zphase = policy._zphase_cache
+                current_chunk_start_t = t
                 chunk_consumed = 0
 
             a_base = policy._queues[ACTION].popleft()
             chunk_consumed += 1
             k_idx = chunk_consumed - 1
-            k_norm = k_idx / max(1, n_action_steps - 1)
+            k_norm = k_idx / max(1, chunk_len - 1)
+            chunk_age_steps = float(t - current_chunk_start_t)
+            chunk_age_norm = chunk_age_steps / max(1, chunk_len - 1)
 
             # Stash normalized wrist for batched DINO pass below.
             # _wrist_for_dino returns (1,3,H,W); strip the batch dim for stacking.
@@ -381,6 +761,10 @@ def main() -> None:
                     else torch.zeros(expert_hidden, dtype=torch.float32)
                 ),
                 "a_base": a_base.squeeze(0).cpu().float(),
+                "a_base_chunk": current_a_base_chunk.clone(),
+                "chunk_step_idx": int(k_idx),
+                "chunk_age_steps": chunk_age_steps,
+                "chunk_age_norm": chunk_age_norm,
                 "k_norm": float(k_norm),
             })
 
@@ -414,6 +798,10 @@ def main() -> None:
                 "observation.extra.z_goal":     rec["z_goal"],
                 "observation.extra.z_phase":    rec["z_phase"],
                 "observation.extra.a_base":     rec["a_base"],
+                "observation.extra.a_base_chunk": rec["a_base_chunk"],
+                "observation.extra.chunk_step_idx": torch.tensor([rec["chunk_step_idx"]], dtype=torch.int64),
+                "observation.extra.chunk_age_steps": torch.tensor([rec["chunk_age_steps"]], dtype=torch.float32),
+                "observation.extra.chunk_age_norm": torch.tensor([rec["chunk_age_norm"]], dtype=torch.float32),
                 "observation.extra.k_idx_norm": torch.tensor([rec["k_norm"]], dtype=torch.float32),
                 "observation.extra.dino_patches":  all_dino_patches[local_t],
                 "observation.extra.contact_label": torch.tensor([0.0], dtype=torch.float32),

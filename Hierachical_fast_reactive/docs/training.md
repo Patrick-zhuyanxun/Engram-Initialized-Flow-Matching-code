@@ -309,11 +309,17 @@ the run07 timing.
 
 The fast module casts cached `float16` features to its parameter dtype at the
 module boundary, so the cache can stay compact while training remains
-`float32` unless AMP is enabled. Fast-cache schema v2 also stores static Stage B
-labels, `observation.extra.y_correct` and `observation.extra.y_preserve`, plus
-their offline error thresholds in `meta.json`. Schema v1 caches still work for
-Stage A, but `--policy.use_stage_b_objective=true` requires schema v2 labels.
-The fast-cache is frame-level storage: it does not bake in a sequence length.
+`float32` unless AMP is enabled. Fast-cache schema v3 adds
+`observation.extra.a_base_chunk=(50,7)`, `observation.extra.chunk_step_idx=(1,)`,
+optional `observation.extra.chunk_age_steps=(1,)` / `chunk_age_norm=(1,)`,
+and top-level `chunk_len=50` metadata for chunk-aware FWR. New recordings store
+the generated SmolVLA chunk directly; older recordings without these fields are
+still supported by reconstructing chunks from frame-level `a_base`. It keeps the schema
+v2 static Stage B labels, `observation.extra.y_correct` and
+`observation.extra.y_preserve`, plus their offline error thresholds in
+`meta.json`. Schema v1/v2 caches still load for older modes, but
+`RESIDUAL_MERGE_MODE=fast_wrist_chunk` requires schema v3 chunk fields. The
+fast-cache is frame-level storage: it does not bake in a sequence length.
 `SEQ_LEN` is a training-time sampling/windowing choice passed through
 `--policy.seq_len`.
 
@@ -322,7 +328,8 @@ Build once per source dataset:
 ```bash
 ~/Robotic_infra/lerobot/.venv/bin/python scripts/build_hfrvla_fastcache.py \
     --source-root checkpoints/HFRVLA_libero_v1_merged_reindexed \
-    --cache-root checkpoints/HFRVLA_libero_v1_fastcache_v2 \
+    --cache-root checkpoints/HFRVLA_libero_v1_fastcache_v3_plan50 \
+    --chunk-len 50 \
     --correct-quantile 0.80 \
     --preserve-quantile 0.50
 ```
@@ -334,7 +341,7 @@ RUN_NAME=hfrvla_run_fastcache_seq4 \
 WANDB_ENABLE=true \
 HFRVLA_TMP_ROOT=$HOME/tmp/hfrvla \
 HFRVLA_DATASET_BACKEND=fastcache \
-HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_v2 \
+HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_v3_plan50 \
 SEQ_LEN=4 \
 BATCH_SIZE=256 \
 NUM_WORKERS=8 \
@@ -491,37 +498,43 @@ therefore passed as `--policy.optimizer_*` fields, not top-level
 | `--policy.curriculum_warmup_steps` | 1000 | Stage 0 length: delta only, heads frozen. |
 | `--policy.curriculum_joint_steps` | 49000 | Stage 1 length: all losses active. |
 | `--policy.curriculum_refine_steps` | 10000 | Stage 2 length: LR is reduced by 10x at entry. |
-| `--policy.seq_len` | 8 | Training window length; gated mode consumes the full window, while A2C2 mode requires at least 2 frames and uses the previous/current pair. |
+| `--policy.seq_len` | 8 | Training window length; gated mode consumes the full window, FWR-v1 requires at least 2 frames for previous/current conditioning, and FWR-v2 chunk mode uses the current frame plus the v3 full base chunk. |
 
-### A2C2-Wrist baseline
+### Fast Wrist Residual modes
 
-Set `RESIDUAL_MERGE_MODE=a2c2` to train the simplified feed-forward
-correction head. This mode removes the gate, contact head, GRU, conservative
-preserve losses, and Stage B labels from the objective. It supervises the raw
-current-step residual:
+Set `RESIDUAL_MERGE_MODE=fast_wrist` to train the FWR-v1 feed-forward
+correction head. The deprecated `a2c2` value is still accepted as an alias for
+old scripts and checkpoints. This mode removes the gate, contact head, GRU,
+conservative preserve losses, and Stage B labels from the objective. It
+supervises both the raw current-step residual and the deployed merged action:
 
 ```text
 delta_target = action_t - a_base_t
-loss = MSE(delta_pred, delta_target)
+delta_exec = FAST_RESIDUAL_ALPHA * clip(delta_pred)
+a_hat = a_base_t + delta_exec
+loss = lambda_delta * SmoothL1(delta_pred, delta_target)
+     + lambda_final * SmoothL1(a_hat, action_t)
+     + lambda_residual * mean(delta_exec^2)
+     + lambda_clip * mean(relu(abs(delta_pred) - residual_cap))
 ```
 
 At inference it applies only the configured clipped residual:
 
 ```text
-a_final = a_base + A2C2_ALPHA * clip(delta_pred)
+a_final = a_base + FAST_RESIDUAL_ALPHA * clip(delta_pred)
 ```
 
-The first intended A2C2-Wrist run should keep the frame-level v2 fast-cache and
-use a two-frame training window for previous-action conditioning:
+FWR-v1 can train from the frame-level v2/v3 fast-cache and uses a two-frame
+training window for previous-action conditioning:
 
 ```bash
-RUN_NAME=hfrvla_a2c2_wrist_seq2 \
+RUN_NAME=hfrvla_fwr_wrist_seq2 \
 WANDB_ENABLE=false \
 HFRVLA_DATASET_BACKEND=fastcache \
 HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_v2 \
-RESIDUAL_MERGE_MODE=a2c2 \
-A2C2_ALPHA=1.0 \
-A2C2_USE_LATENT_CONTEXT=true \
+RESIDUAL_MERGE_MODE=fast_wrist \
+FAST_RESIDUAL_ALPHA=1.0 \
+FAST_RESIDUAL_USE_LATENT_CONTEXT=true \
 SEQ_LEN=2 \
 BATCH_SIZE=256 \
 NUM_WORKERS=8 \
@@ -529,9 +542,30 @@ STEPS=10000 \
 scripts/run_hfrvla_training_foreground.sh
 ```
 
+Set `RESIDUAL_MERGE_MODE=fast_wrist_chunk` for FWR-v2. This mode requires a
+schema v3 full-chunk cache and lets the residual head attend over all 50 frozen
+SmolVLA base actions using action, chunk-relative, and cosine features while
+still predicting only the current-step `delta_a`:
+
+```bash
+RUN_NAME=hfrvla_fwr_chunk_seq2 \
+WANDB_ENABLE=false \
+HFRVLA_DATASET_BACKEND=fastcache \
+HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_v3_plan50 \
+RESIDUAL_MERGE_MODE=fast_wrist_chunk \
+FAST_RESIDUAL_ALPHA=1.0 \
+FAST_RESIDUAL_USE_LATENT_CONTEXT=true \
+SEQ_LEN=2 \
+BATCH_SIZE=256 \
+NUM_WORKERS=8 \
+STEPS=10000 \
+SAVE_FREQ=25000 \
+scripts/run_hfrvla_training_foreground.sh
+```
+
 For evaluation, package the checkpoint with
-`scripts/package_hfrvla_checkpoint.py` and sweep `A2C2_ALPHA` or
-`--policy.a2c2_alpha` over `0, 0.25, 0.5, 0.75, 1.0`.
+`scripts/package_hfrvla_checkpoint.py` and sweep `FAST_RESIDUAL_ALPHA` or
+`--policy.fast_residual_alpha` over `0, 0.25, 0.5, 0.75, 1.0`.
 
 ### HFRVLA LR/weight-decay W&B sweep
 
@@ -568,9 +602,9 @@ After the 2026-05-29 matched `plan=50`, `exec/replan=8` evaluation, the
 single-run default is `LR=3e-4` and `WEIGHT_DECAY=1e-5`.
 
 Run names use the `hfrvla_*` prefix, for example
-`hfrvla_lr3e_4_wd1e_5_b512_50k`. The script still sets
-`RESIDUAL_MERGE_MODE=a2c2` internally because that is the current code flag for
-the simplified HFRVLA correction module.
+`hfrvla_lr3e_4_wd1e_5_b512_50k`. New FWR runs should set
+`RESIDUAL_MERGE_MODE=fast_wrist` or `fast_wrist_chunk`; historical sweep
+scripts may still carry the deprecated `a2c2` alias for older checkpoints.
 
 Preview all commands without launching training:
 
@@ -733,15 +767,15 @@ chunk experiment.
 Recommended architecture experiments after this baseline:
 
 1. **Temporal wrist visual pooling:** keep `seq_len=2` or test `seq_len=4`, but
-   explicitly feed previous/current wrist DINO patches into the A2C2-Wrist
+   explicitly feed previous/current wrist DINO patches into the FWR-v1
    module. The current implementation uses previous action context, not a true
    previous-wrist visual context.
 2. **Alpha-calibrated residual objective:** keep the no-gate architecture, but
    train/evaluate around the deployment scale that works (`alpha=0.5`) instead
    of treating `alpha=1.0` as the default target.
 3. **Latent-context ablation:** run the same 30k recipe with
-   `A2C2_USE_LATENT_CONTEXT=false` to check whether `z_goal/z_phase` are helping
-   correction or adding noise.
+   `FAST_RESIDUAL_USE_LATENT_CONTEXT=false` to check whether `z_goal/z_phase`
+   are helping correction or adding noise.
 4. **Action-context ablation:** remove `prev_a_base` / `prev_delta` from the
    fuser to measure whether the current previous-action conditioning is
    responsible for the 30k gain.
@@ -825,8 +859,9 @@ did not match the clipped/gated action actually sent to LIBERO.
 | `--policy.err_preserve_thresh` | `0.5` | Stage A preserve threshold in summed-squared action error units. |
 
 These knobs are retained for the legacy `RESIDUAL_MERGE_MODE=gated` path. They
-are not used by the current `RESIDUAL_MERGE_MODE=a2c2` smoke path, whose loss is
-only the raw current-step residual MSE.
+are not used by FWR modes, whose loss is the deployment-aligned objective in
+§5: raw residual SmoothL1 plus final-action SmoothL1 and optional residual/clip
+penalties.
 
 Stage B replaces the Stage A loss with the five-term rate-distortion objective
 from `docs/hfrvla_objective_debate_20260521.md`: `correct`, `preserve_zero`,
@@ -835,7 +870,7 @@ labels rather than training-time thresholds.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--policy.use_stage_b_objective` | `false` | Enables the Stage B loss branch; requires fast-cache schema v2 labels. |
+| `--policy.use_stage_b_objective` | `false` | Enables the Stage B loss branch; requires fast-cache schema v2/v3 labels. |
 | `--policy.loss_lambda_correct` | `1.0` | SmoothL1 residual correction loss on `y_correct=1` frames only. |
 | `--policy.loss_lambda_rate` | `0.5` | Mean gate plus batch budget hinge. |
 | `--policy.loss_lambda_smooth` | `0.2` | Smoothness penalty on `gate * clip(delta_a)` across the GRU window. |
@@ -848,10 +883,10 @@ is easier to audit:
 
 - `Training I/O`: separates fast-module inputs from expert-only supervision
   targets.
-- `Fast module outputs`: shows the current A2C2-Wrist `delta_a` output and the
+- `Fast module outputs`: shows the current FWR `delta_a` output and the
   `a_final = a_base + alpha * clip(delta_a)` merge.
-- `Learning objective`: distinguishes the current raw residual MSE from the
-  legacy gated losses.
+- `Learning objective`: distinguishes the current deployment-aligned FWR loss
+  from the legacy gated losses.
 
 ### Output structure
 

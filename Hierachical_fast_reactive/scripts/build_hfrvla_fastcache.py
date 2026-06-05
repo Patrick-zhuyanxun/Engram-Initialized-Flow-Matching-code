@@ -16,7 +16,7 @@ import pandas as pd
 
 from lerobot_policy_hfrvla.fast_cache_dataset import CACHE_SCHEMA_VERSION
 
-POLICY_TO_ARRAY = {
+SOURCE_POLICY_TO_ARRAY = {
     "observation.state": ("state.npy", np.float32),
     "action": ("action.npy", np.float32),
     "observation.extra.a_base": ("a_base.npy", np.float32),
@@ -25,6 +25,12 @@ POLICY_TO_ARRAY = {
     "observation.extra.z_phase": ("z_phase.npy", np.float16),
     "observation.extra.dino_patches": ("dino_patches.npy", np.float16),
     "observation.extra.contact_label": ("contact_label.npy", np.float32),
+}
+OPTIONAL_SOURCE_POLICY_TO_ARRAY = {
+    "observation.extra.a_base_chunk": ("a_base_chunk.npy", np.float32),
+    "observation.extra.chunk_step_idx": ("chunk_step_idx.npy", np.int64),
+    "observation.extra.chunk_age_steps": ("chunk_age_steps.npy", np.float32),
+    "observation.extra.chunk_age_norm": ("chunk_age_norm.npy", np.float32),
 }
 INDEX_TO_ARRAY = {
     "index": ("index.npy", np.int64),
@@ -54,6 +60,15 @@ def _numeric_file_index(path: Path) -> int:
     return int(path.stem.split("-")[-1])
 
 
+def _source_policy_to_array_for_info(info: dict) -> dict[str, tuple[str, Any]]:
+    features = info.get("features", {})
+    mapping = dict(SOURCE_POLICY_TO_ARRAY)
+    for key, spec in OPTIONAL_SOURCE_POLICY_TO_ARRAY.items():
+        if key in features:
+            mapping[key] = spec
+    return mapping
+
+
 def _load_episode_bounds(source_root: Path) -> tuple[np.ndarray, np.ndarray]:
     files = sorted(
         (source_root / "meta/episodes").glob("chunk-*/*.parquet"),
@@ -69,10 +84,14 @@ def _load_episode_bounds(source_root: Path) -> tuple[np.ndarray, np.ndarray]:
     )
 
 
-def _empty_arrays(cache_root: Path, info: dict) -> dict[str, np.memmap]:
+def _empty_arrays(
+    cache_root: Path,
+    info: dict,
+    source_policy_to_array: dict[str, tuple[str, Any]],
+) -> dict[str, np.memmap]:
     total_frames = int(info["total_frames"])
     arrays = {}
-    for key, (filename, dtype) in POLICY_TO_ARRAY.items():
+    for key, (filename, dtype) in source_policy_to_array.items():
         feature = info["features"][key]
         shape = (total_frames, *tuple(feature["shape"]))
         arrays[key] = np.lib.format.open_memmap(
@@ -82,6 +101,52 @@ def _empty_arrays(cache_root: Path, info: dict) -> dict[str, np.memmap]:
             shape=shape,
         )
     return arrays
+
+
+def _write_base_chunk_arrays(
+    cache_root: Path,
+    a_base: np.ndarray,
+    starts: np.ndarray,
+    ends: np.ndarray,
+    *,
+    chunk_len: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    if chunk_len <= 0:
+        raise ValueError(f"chunk_len must be positive, got {chunk_len}")
+    if a_base.ndim != 2:
+        raise ValueError(f"a_base must have shape (N, action_dim), got {a_base.shape}")
+
+    total_frames, action_dim = a_base.shape
+    a_base_chunk = np.lib.format.open_memmap(
+        cache_root / "a_base_chunk.npy",
+        mode="w+",
+        dtype=np.float32,
+        shape=(total_frames, chunk_len, action_dim),
+    )
+    chunk_step_idx = np.lib.format.open_memmap(
+        cache_root / "chunk_step_idx.npy",
+        mode="w+",
+        dtype=np.int64,
+        shape=(total_frames, 1),
+    )
+
+    for ep_start, ep_end in zip(starts.astype(np.int64), ends.astype(np.int64), strict=True):
+        for chunk_start in range(int(ep_start), int(ep_end), chunk_len):
+            chunk_end = min(chunk_start + chunk_len, int(ep_end))
+            usable = chunk_end - chunk_start
+            if usable <= 0:
+                continue
+            chunk = np.empty((chunk_len, action_dim), dtype=np.float32)
+            chunk[:usable] = np.asarray(a_base[chunk_start:chunk_end], dtype=np.float32)
+            if usable < chunk_len:
+                chunk[usable:] = chunk[usable - 1]
+            for local_step, frame_idx in enumerate(range(chunk_start, chunk_end)):
+                a_base_chunk[frame_idx] = chunk
+                chunk_step_idx[frame_idx, 0] = local_step
+
+    a_base_chunk.flush()
+    chunk_step_idx.flush()
+    return a_base_chunk, chunk_step_idx
 
 
 def _empty_index_arrays(cache_root: Path, total_frames: int) -> dict[str, np.memmap]:
@@ -149,6 +214,7 @@ def build_fast_cache(
     source_root: str | Path,
     cache_root: str | Path,
     *,
+    chunk_len: int = 50,
     correct_quantile: float = 0.80,
     preserve_quantile: float = 0.50,
     static_y_preserve: bool = False,
@@ -164,14 +230,15 @@ def build_fast_cache(
     np.save(cache_root / "episode_starts.npy", starts)
     np.save(cache_root / "episode_ends.npy", ends)
 
-    arrays = _empty_arrays(cache_root, info)
+    source_policy_to_array = _source_policy_to_array_for_info(info)
+    arrays = _empty_arrays(cache_root, info, source_policy_to_array)
     index_arrays = _empty_index_arrays(cache_root, int(info["total_frames"]))
     data_files = sorted((source_root / "data").glob("*/*.parquet"), key=_numeric_file_index)
     if not data_files:
         raise FileNotFoundError(f"No data parquet files under {source_root / 'data'}")
 
     offset = 0
-    columns = list(POLICY_TO_ARRAY)
+    columns = list(source_policy_to_array)
     index_columns = list(INDEX_TO_ARRAY)
     for path in data_files:
         df = pd.read_parquet(path, columns=[*columns, *index_columns])
@@ -194,6 +261,18 @@ def build_fast_cache(
         arr.flush()
     for arr in index_arrays.values():
         arr.flush()
+    recorded_chunks = (
+        "observation.extra.a_base_chunk" in arrays
+        and "observation.extra.chunk_step_idx" in arrays
+    )
+    if not recorded_chunks:
+        _write_base_chunk_arrays(
+            cache_root,
+            arrays["observation.extra.a_base"],
+            starts,
+            ends,
+            chunk_len=chunk_len,
+        )
     static_labels = _write_static_labels(
         cache_root,
         arrays,
@@ -203,11 +282,29 @@ def build_fast_cache(
     )
 
     features = {}
-    for key, (filename, dtype) in POLICY_TO_ARRAY.items():
+    for key, (filename, dtype) in source_policy_to_array.items():
         features[key] = {
             "array": filename,
             "dtype": np.dtype(dtype).name,
             "shape": [expected, *list(info["features"][key]["shape"])],
+        }
+    action_dim = int(arrays["observation.extra.a_base"].shape[-1])
+    effective_chunk_len = (
+        int(arrays["observation.extra.a_base_chunk"].shape[1])
+        if "observation.extra.a_base_chunk" in arrays
+        else int(chunk_len)
+    )
+    if "observation.extra.a_base_chunk" not in features:
+        features["observation.extra.a_base_chunk"] = {
+            "array": "a_base_chunk.npy",
+            "dtype": "float32",
+            "shape": [expected, effective_chunk_len, action_dim],
+        }
+    if "observation.extra.chunk_step_idx" not in features:
+        features["observation.extra.chunk_step_idx"] = {
+            "array": "chunk_step_idx.npy",
+            "dtype": "int64",
+            "shape": [expected, 1],
         }
     for key, (filename, dtype) in STATIC_LABEL_TO_ARRAY.items():
         features[key] = {
@@ -229,6 +326,7 @@ def build_fast_cache(
         "total_frames": expected,
         "total_episodes": int(info["total_episodes"]),
         "fps": int(info["fps"]),
+        "chunk_len": int(effective_chunk_len),
         "features": features,
         "index_arrays": index_features,
         "static_label_quantiles": {
@@ -253,6 +351,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--cache-root", type=Path, required=True)
+    parser.add_argument("--chunk-len", type=int, default=50)
     parser.add_argument("--correct-quantile", type=float, default=0.80)
     parser.add_argument("--preserve-quantile", type=float, default=0.50)
     parser.add_argument(
@@ -269,6 +368,7 @@ def main() -> None:
     build_fast_cache(
         args.source_root,
         args.cache_root,
+        chunk_len=args.chunk_len,
         correct_quantile=args.correct_quantile,
         preserve_quantile=args.preserve_quantile,
         static_y_preserve=args.static_y_preserve,

@@ -2,9 +2,22 @@
 
 > Contract for the implementing agent (Codex).
 > Verifier: Claude. Author: Patrick Chu.
-> Last updated: 2026-05-25.
+> Last updated: 2026-06-05.
 
-This document is the **single source of truth** for implementation. Any deviation must be flagged and justified.
+This document is the **single source of truth** for implementation. Any
+deviation must be flagged and justified.
+
+**Current paper mainline.** Use Fast Wrist Residual (FWR), especially
+`residual_merge_mode="fast_wrist_chunk"` for the schema-v3 generated-chunk
+cache. The deployed merge is:
+
+```text
+a_final = a_base + alpha * clip(delta_a)
+```
+
+The older gated / contact / GRU path remains documented below only as a legacy
+compatibility path for old checkpoints and scripts. Do not use it as the
+default paper method unless the project explicitly reactivates that line.
 
 ---
 
@@ -13,7 +26,7 @@ This document is the **single source of truth** for implementation. Any deviatio
 Implement a LeRobot plugin called `lerobot_policy_hfrvla` that:
 1. Wraps a frozen pretrained SmolVLA policy (System 2).
 2. Adds a small trainable Fast Reactive Module (System 1) using DINOv3 ViT-S/16 wrist features.
-3. Computes a corrected action at every control step, preserving SmolVLA's base action and applying safety limits only to the fast residual. The default gated path uses `a_final = a_base + g · clip(δa)`. The A2C2-Wrist baseline uses `a_final = a_base + alpha · clip(δa)` with no gate, contact head, or GRU.
+3. Computes a corrected action at every control step, preserving SmolVLA's base action and applying safety limits only to the fast residual. The current Fast Wrist Residual modes use `a_final = a_base + alpha · clip(δa)` with no gate, contact head, or GRU. The gated merge `a_final = a_base + g · clip(δa)` is legacy-only.
 4. Trains end-to-end (System 1 only) on LIBERO demos via offline decomposition of expert vs. SmolVLA actions.
 5. Is registered through entry points so `lerobot-train --policy.type=hfrvla` works.
 
@@ -36,7 +49,7 @@ Hierachical_fast_reactive/policy/lerobot_policy_hfrvla/
     ├── configuration_hfrvla.py
     ├── modeling_hfrvla.py
     ├── fast_reactive.py
-    ├── a2c2_wrist.py
+    ├── fast_wrist_residual.py
     ├── dinov3_backbone.py
     ├── fast_cache_dataset.py
     ├── processor_hfrvla.py
@@ -133,15 +146,17 @@ class HFRVLAConfig(SmolVLAConfig):
     focal_pos_weight: float = 4.0
     gate_task_budget: float = 0.25
 
-    # A2C2-Wrist baseline. "gated" preserves the original HFRVLA path.
-    # "a2c2" builds a stateless feed-forward correction head and merges as
-    # a_base + a2c2_alpha * clip(delta_a).
+    # Fast Wrist Residual modes. "gated" preserves the original HFRVLA path.
+    # "fast_wrist" builds the stateless previous/current correction head.
+    # "fast_wrist_chunk" attends over the full frozen base action chunk.
+    # Deprecated "a2c2" aliases load as "fast_wrist".
     residual_merge_mode: str = "gated"
-    a2c2_alpha: float = 1.0
-    a2c2_use_latent_context: bool = True
+    fast_residual_alpha: float = 1.0
+    fast_residual_use_latent_context: bool = True
 
     # Training-time window length. Gated mode consumes the full sequence.
-    # A2C2 mode requires seq_len >= 2 and uses the previous/current pair.
+    # FWR-v1 requires seq_len >= 2 and uses the previous/current pair.
+    # FWR-v2 chunk mode uses the current frame plus a v3 full-chunk cache.
     seq_len: int = 8
 
     # Hooks on SmolVLA
@@ -260,16 +275,16 @@ Total trainable parameters of `FastReactiveModule` (excluding the frozen DINOv3)
 
 ---
 
-## 5A ·  a2c2_wrist.py
+## 5A ·  fast_wrist_residual.py
 
-This is the simplified A2C2-style baseline for the paper comparison. It keeps
+This is the simplified Fast Wrist Residual path for the paper comparison. It keeps
 the frozen SmolVLA slow planner and wrist DINO features, but removes the gated
 HFRVLA temporal machinery.
 
 ### 5A.1 Interface
 
 ```python
-class A2C2WristCorrectionModule(nn.Module):
+class FastWristResidualModule(nn.Module):
     def forward(
         self,
         wrist_rgb: torch.Tensor | None,
@@ -282,7 +297,7 @@ class A2C2WristCorrectionModule(nn.Module):
         prev_delta: torch.Tensor,    # (B, action_dim), previous correction
         *,
         dino_patches: torch.Tensor | None = None,
-    ) -> A2C2WristOutput:
+    ) -> FastWristResidualOutput:
         ...
 ```
 
@@ -298,19 +313,33 @@ Training uses teacher-forced previous correction:
 ```python
 prev_delta = action_{t-1} - a_base_{t-1}
 target_delta = action_t - a_base_t
-loss = mse(delta_pred, target_delta)
+delta_exec = fast_residual_alpha * clip(delta_pred)
+a_hat = a_base_t + delta_exec
+loss = (
+    lambda_delta * smooth_l1(delta_pred, target_delta)
+    + lambda_final * smooth_l1(a_hat, action_t)
+    + lambda_residual * mean(delta_exec ** 2)
+    + lambda_clip * mean(relu(abs(delta_pred) - residual_cap))
+)
 ```
 
-The raw target is not clipped during training. Inference clips only the
-executed residual:
+The raw target remains available as an auxiliary term, but the main objective
+now includes the same clipped and alpha-scaled action that inference executes:
 
 ```python
-a_final = a_base + a2c2_alpha * clip(delta_pred)
-prev_delta_next = a2c2_alpha * clip(delta_pred)
+a_final = a_base + fast_residual_alpha * clip(delta_pred)
+prev_delta_next = fast_residual_alpha * clip(delta_pred)
 ```
 
 The first intended run uses `seq_len=2`, which means current plus one previous
 frame. Episode starts use the existing LeRobot window clamp behavior.
+
+`FastWristChunkResidualModule` is the FWR-v2 mode. It receives
+`a_base_chunk: (B, 50, 7)` and `chunk_step_idx: (B, 1)`, builds action tokens
+from `a_base_chunk[j]`, `j_norm`, `(j-k)/(K-1)`, `abs(j-k)/(K-1)`, and
+`cos(a_base_chunk[j], a_base_chunk[k])`, then cross-attends over the 50 tokens
+to predict the current-step residual. The merge and deployment-aligned FWR loss
+remain the same as FWR-v1.
 
 ---
 
@@ -447,17 +476,28 @@ fastcache is built with `--static-y-preserve`, so every rollout frame has
 cache and rollout cache by setting `HFRVLA_FASTCACHE_ROLLOUT_ROOT`; leaving it
 unset preserves the Stage A/B single-cache path.
 
-**A2C2-Wrist (`residual_merge_mode="a2c2"`)** bypasses Stage A/B/C losses and
-uses only the current raw residual target:
+**Fast Wrist Residual (`residual_merge_mode="fast_wrist"` or
+`"fast_wrist_chunk"`)** bypasses Stage A/B/C losses and uses a deployment-
+aligned current-step objective:
 
 ```python
 target_delta = a_expert[:, -1] - a_base[:, -1]
-l_delta = mse(delta_pred, target_delta)
-loss = l_delta
+delta_exec = fast_residual_alpha * clip(delta_pred)
+a_final = a_base[:, -1] + delta_exec
+l_delta = smooth_l1(delta_pred, target_delta)
+l_final = smooth_l1(a_final, a_expert[:, -1])
+l_residual = mean(delta_exec ** 2)
+l_clip = mean(relu(abs(delta_pred) - residual_cap))
+loss = (
+    fast_wrist_loss_lambda_delta * l_delta
+    + fast_wrist_loss_lambda_final * l_final
+    + fast_wrist_loss_lambda_residual * l_residual
+    + fast_wrist_loss_lambda_clip * l_clip
+)
 ```
 
 It intentionally has no gate BCE, contact auxiliary loss, preserve-zero loss,
-rate term, or smoothness term.
+rate term, or Stage B static-label term.
 
 ### 6.5 Action merging
 
@@ -468,8 +508,8 @@ def _merge(self, a_base, delta_a, gate, prev_a, dt):
         self.config.safety_joint_velocity_limit * dt,
     )
     delta_clip = delta_a.clamp(-max_residual, +max_residual)
-    if self.config.residual_merge_mode == "a2c2":
-        return a_base + self.config.a2c2_alpha * delta_clip
+    if self.config.residual_merge_mode in {"fast_wrist", "fast_wrist_chunk"}:
+        return a_base + self.config.fast_residual_alpha * delta_clip
     return a_base + gate.unsqueeze(-1) * delta_clip
 ```
 
@@ -501,14 +541,21 @@ Expected recorded features include:
 - `observation.extra.z_goal`
 - `observation.extra.z_phase`
 - `observation.extra.a_base`
+- `observation.extra.a_base_chunk` (generated slow-planner chunk; schema v3)
+- `observation.extra.chunk_step_idx` (schema v3)
+- `observation.extra.chunk_age_steps` (optional schema v3)
+- `observation.extra.chunk_age_norm` (optional schema v3)
 - `observation.extra.k_idx_norm`
 - `observation.extra.dino_patches`
 - `observation.extra.contact_label`
 
-The fast-cache builder stores frame-aligned arrays only. It must not accept or
-write `seq_len`; the sequence/window length is a training-time sampler choice
-provided to `HFRVLAFastCacheDataset(..., seq_len=...)` and
-`--policy.seq_len`.
+The fast-cache builder stores frame-aligned arrays only. Schema v3 stores the
+full frozen base chunk, current chunk index, and optional chunk age per frame,
+plus top-level `chunk_len=50`. If the canonical dataset was recorded before
+generated chunks were added, the builder falls back to reconstructing chunk
+arrays from frame-level `a_base` for backward compatibility. It must not accept
+or write `seq_len`; the sequence/window length is a training-time sampler choice provided to
+`HFRVLAFastCacheDataset(..., seq_len=...)` and `--policy.seq_len`.
 
 Legacy `.pt` decomposition notes:
 
@@ -541,8 +588,9 @@ Returns dicts shaped exactly as expected by `HFRVLAPolicy.forward(...)` (see 6.3
 
 Supports **sequence sampling** at read time: each `__getitem__` returns
 `seq_len` consecutive steps ending at the sampled frame. Gated mode consumes the
-full window. A2C2 mode requires `seq_len >= 2` and uses only the previous and
-current frames.
+full window. FWR-v1 requires `seq_len >= 2` and uses only the previous and
+current frames. FWR-v2 chunk mode reads the current window element plus
+`a_base_chunk` and `chunk_step_idx` from schema v3.
 
 ---
 
@@ -560,13 +608,16 @@ monkey-patches `lerobot-train` to call `policy.set_training_step(step)` for the
 curriculum and to swap in `HFRVLAFastCacheDataset` when
 `HFRVLA_DATASET_BACKEND=fastcache`.
 
-For the A2C2-Wrist baseline, set:
+For the Fast Wrist Residual v1 path, set:
 
 ```bash
-RESIDUAL_MERGE_MODE=a2c2
+RESIDUAL_MERGE_MODE=fast_wrist
 SEQ_LEN=2
-A2C2_ALPHA=1.0
+FAST_RESIDUAL_ALPHA=1.0
 ```
+
+For chunk-aware FWR-v2, build a schema v3 fast-cache and set
+`RESIDUAL_MERGE_MODE=fast_wrist_chunk`.
 
 `get_optim_params()` must still return only trainable fast-module parameters.
 
@@ -590,7 +641,7 @@ After Codex returns code:
 - [ ] `policy.fast.count_parameters() < 10_000_000`.
 - [ ] Forward-hook on SmolVLA captures non-None `_zgoal_cache` and `_zphase_cache` after a forward pass.
 - [ ] `_compute_losses` returns finite `delta`, `gate`, `final`, `preserve`, `gate_prior`, optional `contact`, and `loss` scalars on a synthetic batch.
-- [ ] A2C2 mode returns finite `delta` and `loss` scalars without gate/contact metrics.
+- [ ] FWR modes return finite `delta` and `loss` scalars without gate/contact metrics.
 - [ ] `select_action()` on a synthetic single-step batch returns an action of correct shape with no NaN.
 - [ ] DINOv3 backbone forward on `(1, 3, 224, 224)` returns `(1, 196, 384)`.
 - [ ] Gate target uses `stop_grad(clip(delta_a))` and opens only when the clipped residual clears `gate_improvement_margin`.

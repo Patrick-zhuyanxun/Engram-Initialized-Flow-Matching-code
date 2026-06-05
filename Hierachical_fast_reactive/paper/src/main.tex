@@ -1,0 +1,124 @@
+\documentclass[10pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{hyperref}
+
+\newcommand{\method}{HFRVLA}
+\newcommand{\smolvla}{SmolVLA}
+\newcommand{\abase}{a_{\mathrm{base}}}
+\newcommand{\afinal}{a_{\mathrm{final}}}
+\newcommand{\deltah}{\hat{\Delta a}}
+
+\title{\method: Wrist-Centric Fast Residual Correction for Frozen VLA Action Chunks}
+\author{Anonymous}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Vision-language-action policies often amortize inference by predicting action chunks, but executing a chunk open-loop can make the action stream stale when the robot or scene deviates from the observation that produced the chunk. We study whether a small wrist-camera residual module can improve chunk execution without fine-tuning the base VLA. \method{} wraps a frozen LIBERO-adapted \smolvla{} slow planner and trains only a fast residual head that consumes wrist DINOv3 patches, robot state, the frozen base action, chunk position, and slow-planner context. At deployment, the robot executes $\afinal = \abase + \alpha \cdot \mathrm{clip}(\deltah)$.
+In current LIBERO simulation evidence, \method{} improves matched action-step settings over the frozen \smolvla{} baseline at short execution horizons, but long matched chunks remain difficult and require residual calibration. These results position \method{} as a lightweight, LeRobot-native testbed for execution-time correction of frozen VLA chunks rather than as a completed solution to long-horizon open-loop drift.
+\end{abstract}
+
+\section{Introduction}
+
+Large vision-language-action (VLA) policies can use language and visual context to produce robot actions, but high-capacity policies are expensive to run at every control tick. A common deployment compromise is action chunking: the policy predicts a sequence of future actions, and the robot executes that sequence for several steps before replanning. Chunking improves inference amortization and temporal consistency, but it also weakens closed-loop reactivity. When the scene, object pose, contact condition, or robot state changes during chunk execution, later actions can be based on an observation that is no longer current.
+
+Recent work makes this timing problem explicit. A2C2 introduces a correction head that runs every control step and adds time-aware residual corrections to frozen VLA action chunks using the latest observation and base-policy context~\citep{sendai2025a2c2}. DynamicVLA addresses the same perception--execution gap from a scheduler and model-design perspective, using continuous inference and latent-aware action streaming to reduce temporal misalignment~\citep{xie2026dynamicvla}. These directions suggest that action chunk deployment should be evaluated as a closed-loop timing problem, not only as a supervised prediction problem.
+
+\method{} asks a narrower question: how far can a wrist-centric fast residual module go when the slow VLA is kept frozen? We use `HuggingFaceVLA/smolvla\_libero' as the frozen slow planner~\citep{shukor2025smolvla}, precompute the slow planner outputs and DINOv3 wrist features~\citep{simeoni2025dinov3}, and train a lightweight correction head through the LeRobot workflow~\citep{cadene2026lerobot}. The per-step visual correction signal is wrist-camera based; the policy is not wrist-only, because the fast module also receives $\abase$, robot state, chunk position, and slow-planner latent context.
+
+The current paper makes four claims:
+\begin{enumerate}
+  \item \textbf{Problem framing.} Frozen VLA action chunks should be evaluated under matched planning and execution horizons, because default every-step replanning is not a matched baseline for chunk execution.
+  \item \textbf{Method.} A small wrist-camera residual module can be trained offline from cached slow-planner features and deployed as $\abase + \alpha \cdot \mathrm{clip}(\deltah)$ without updating the slow VLA.
+  \item \textbf{Artifact.} The implementation is LeRobot-native: it includes dataset recording, fast-cache construction, training, checkpoint packaging, and an evaluation registry.
+  \item \textbf{Evidence and limitation.} Current results show useful gains at short execution horizons, but the long-horizon setting remains fragile and motivates delayed-chunk targets, latency features, and deployment-aligned residual losses.
+\end{enumerate}
+
+\section{Method}
+
+\subsection{Frozen Slow Planner}
+
+The slow planner is a frozen LIBERO-adapted \smolvla{} checkpoint. Given top and wrist observations, state, and task text, the planner outputs an action chunk. During dataset recording we store the per-step base action $\abase \in \mathbb{R}^7$, a normalized chunk index, and pooled slow-planner context vectors. The current local feature contract stores $z_{\mathrm{goal}} \in \mathbb{R}^{960}$ and $z_{\mathrm{phase}} \in \mathbb{R}^{480}$.
+
+The slow planner is not constructed during the main fast-module training loop. Instead, HFRVLA records a custom LeRobotDataset v3 and optionally converts it into a compact frame-level fast-cache. This design keeps the provenance of $\abase$, $z_{\mathrm{goal}}$, and $z_{\mathrm{phase}}$ fixed. If the slow planner changes, the HFRVLA dataset must be re-recorded.
+
+\subsection{Fast Wrist Residual Module}
+
+The trainable fast path receives the current wrist DINOv3 patch features, robot state, $\abase$, chunk index, slow-planner context, and the previous correction. It predicts a full 7D residual $\deltah$. The deployment merge is
+\begin{equation}
+  \afinal = \abase + \alpha \cdot \mathrm{clip}(\deltah, -\delta_{\max}, \delta_{\max}).
+\end{equation}
+The current mainline intentionally excludes the older learned gate, contact auxiliary head, and GRU-centered design. This keeps the first paper claim interpretable: any improvement comes from the residual correction and its conditioning, not from a separate intervention policy.
+
+\subsection{Training Objective}
+
+The implemented baseline trains a residual target against the expert action:
+\begin{equation}
+  \Delta a^* = a_{\mathrm{expert}} - \abase.
+\end{equation}
+The current code supports final-action alignment terms that compare $\abase + \alpha \cdot \mathrm{clip}(\deltah)$ directly to $a_{\mathrm{expert}}$, along with residual and clip monitoring. The ongoing diagnosis suggests that the next important target is delayed chunk-age supervision: the fast module should learn to correct the $k$-th action from a chunk generated at $t-k$, not only the simultaneous base action at $t$.
+
+\section{Experimental Setup and Evidence}
+
+We evaluate on LIBERO~\citep{liu2023libero} through `lerobot-eval'. The dataset used for fast training is a recorded HFRVLA LeRobotDataset v3 with 1,693 episodes and 273,465 frames. The policy checkpoint used for current FWR-v2 sweeps is packaged as `checkpoints/hfrvla\_fwr\_chunk\_generated\_seq2\_b1024p3\_50k\_packaged'. The evaluation registry is the source of truth for completed paper-facing comparisons.
+
+\begin{table}[t]
+  \centering
+  \caption{Registry-backed evidence snapshot, seed 42, LIBERO Spatial + Object combined, 100 episodes per policy/setting unless noted. Planning denotes the slow planner chunk length; execution/replan denotes how many actions are executed before replanning.}
+  \begin{tabular}{llccc}
+    \toprule
+    Sweep & Policy & Planning & Execution/replan & Success \\
+    \midrule
+    action-step & \method{} 30k, $\alpha=0.5$ & 50 & 2 & 85/100 \\
+    action-step & \smolvla{} & 50 & 2 & 82/100 \\
+    action-step & \method{} 30k, $\alpha=0.5$ & 50 & 8 & 81/100 \\
+    action-step & \smolvla{} & 50 & 8 & 77/100 \\
+    matched chunk & \method{} 30k, $\alpha=0.5$ & 8 & 8 & 83/100 \\
+    matched chunk & \smolvla{} & 4 & 4 & 79/100 \\
+    matched chunk & \method{} 30k, $\alpha=0.5$ & 50 & 50 & 46/100 \\
+    matched chunk & \smolvla{} & 50 & 50 & 43/100 \\
+    \bottomrule
+  \end{tabular}
+  \label{tab:evidence}
+\end{table}
+
+Table~\ref{tab:evidence} supports the conservative claim that wrist residual correction helps in some matched chunk-execution regimes, especially when execution/replan is short. It also shows the main unresolved problem: when planning and execution both remain at 50 steps, both \method{} and \smolvla{} degrade sharply.
+
+\paragraph{Active calibration sweep.}
+At the time of this draft, an expanded $n\_action\_steps=50$ LIBERO-Spatial alpha/clip sweep is running with 50 episodes per setting and eval batch size 3. Completed early rows for $\alpha=0.25$ are $23/50$ at $\delta_{\max}=0.05$, $23/50$ at $0.10$, $24/50$ at $0.15$, $24/50$ at $0.18$, and $27/50$ at $0.20$. The $\delta_{\max}=0.22$ row is currently running. These rows are trend diagnostics, not final paper claims.
+
+\section{Related Work}
+
+\paragraph{Action chunk correction.}
+A2C2 is the closest conceptual anchor. It corrects frozen VLA chunks at every control step using the latest observation, base action, chunk-position feature, and base-policy context~\citep{sendai2025a2c2}. \method{} follows the same residual-on-frozen-chunk philosophy but makes a narrower design choice: high-frequency visual correction comes from the wrist camera path, while global task context is inherited from the frozen slow planner.
+
+\paragraph{Latency-aware VLA execution.}
+DynamicVLA frames dynamic manipulation as a perception--execution gap and addresses it with continuous inference and action streaming~\citep{xie2026dynamicvla}. \method{} does not redesign the VLA or scheduler as its main contribution; instead, it studies whether a small residual head can compensate for some chunk staleness while leaving \smolvla{} frozen.
+
+\paragraph{Slow-fast robot policies.}
+Reactive Diffusion Policy uses a slow-fast policy structure for contact-rich manipulation with visual-tactile feedback~\citep{xue2025rdp}. \method{} shares the slow-fast motivation but uses only wrist vision as the fast visual signal, avoiding additional tactile sensors in the current system.
+
+\paragraph{Robot learning infrastructure.}
+LeRobot provides the data, training, and evaluation stack used by this project~\citep{cadene2026lerobot}. LIBERO provides the manipulation benchmark and task suites~\citep{liu2023libero}. DINOv3 supplies the frozen dense wrist visual features used by the residual module~\citep{simeoni2025dinov3}.
+
+\section{Limitations and Next Steps}
+
+The current evidence is simulation-only and should not be framed as a real-hardware validation. Long matched chunks remain the main failure case. Current training also uses a simultaneous residual target, while deployment often requires correcting stale chunk actions generated from older observations. The next method iteration should therefore prioritize delayed chunk-age residual targets, explicit age/latency features, and deployment-aligned losses that include the same $\alpha$ and clipping used at inference.
+
+The wrist-centric design is also under-conditioned for tasks where the wrist image does not contain the target or global spatial relation. The correct claim is not that the whole policy is wrist-only; the claim is that per-step new visual evidence is wrist-based while the slow planner supplies task context.
+
+\section{Conclusion}
+
+\method{} is a LeRobot-native testbed for fast wrist residual correction on frozen VLA action chunks. Current results justify the problem and show modest gains in matched short-execution settings, while also exposing calibration and long-horizon weaknesses. This makes the paper direction strongest as a careful study of frozen VLA chunk correction, not as an over-claimed universal improvement over VLA replanning.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

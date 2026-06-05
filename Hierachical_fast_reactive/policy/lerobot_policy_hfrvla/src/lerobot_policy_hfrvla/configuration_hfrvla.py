@@ -90,9 +90,17 @@ class HFRVLAConfig(SmolVLAConfig):
     # "fast_wrist" uses a stateless feed-forward correction head and merges
     # actions as a_base + fast_residual_alpha * clip(delta_a), without
     # gate/contact/GRU.
+    # "fast_wrist_chunk" keeps the same merge/loss and additionally attends
+    # over the full frozen base action chunk from fast-cache schema v3.
     residual_merge_mode: str = "gated"
     fast_residual_alpha: float | None = None
     fast_residual_use_latent_context: bool | None = None
+    # FWR objective: supervise both the raw residual and the action that will
+    # actually be sent at deployment after alpha scaling and residual clipping.
+    fast_wrist_loss_lambda_delta: float = 1.0
+    fast_wrist_loss_lambda_final: float = 1.0
+    fast_wrist_loss_lambda_residual: float = 0.01
+    fast_wrist_loss_lambda_clip: float = 0.0
     # Deprecated aliases retained so old checkpoints/configs keep loading.
     a2c2_alpha: float | None = None
     a2c2_use_latent_context: bool | None = None

@@ -225,6 +225,13 @@ def _apply_fast_config_overrides(config: HFRVLAConfig, fast_config: dict) -> Non
     for key in _FAST_CONFIG_OVERRIDE_KEYS:
         if key in fast_config and hasattr(config, key):
             setattr(config, key, fast_config[key])
+    if "fast_residual_alpha" not in fast_config and "a2c2_alpha" in fast_config:
+        config.fast_residual_alpha = fast_config["a2c2_alpha"]
+    if (
+        "fast_residual_use_latent_context" not in fast_config
+        and "a2c2_use_latent_context" in fast_config
+    ):
+        config.fast_residual_use_latent_context = fast_config["a2c2_use_latent_context"]
     config.normalize_deprecated_aliases()
 
     # The packaged checkpoint is for online eval/deployment, not cached-feature
