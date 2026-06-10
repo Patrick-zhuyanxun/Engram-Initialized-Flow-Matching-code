@@ -1,0 +1,38 @@
+\begin{center}
+    \large
+    \begin{singlespace}
+        \textbf{\chineseTitle{}} \\[0.5cm]
+    \end{singlespace}
+
+    \begin{singlespace}
+    學生：\studentCnName  \hspace{2.5cm}  指導教授：\advisorCnName \hspace{0.1cm} 博士 \\
+    \end{singlespace}
+
+    \vspace{0.5cm}
+
+    \begin{singlespace}
+        國立陽明交通大學\\
+        \NameofDepartmentInstituteCN\\[0.2cm]
+    \end{singlespace}
+
+    \textbf{摘\hspace{1cm}要} \\[0.5cm]
+
+\end{center}
+
+\normalsize
+
+大型 vision-language-action（VLA）機器人策略能根據語言指令與視覺觀察產生連續動作，但高容量模型的推論成本使其難以在每一個控制時間步都重新規劃。Action chunking 透過一次產生多步動作降低慢速規劃器呼叫頻率，卻導致 chunk 後段動作可能基於過期觀察而執行。本論文研究的核心問題是：在不微調慢速 VLA 規劃器的前提下，是否能用小型腕部相機殘差模組修正凍結 \smolvla{} 動作片段的下一個執行動作。
+
+本研究提出 \method{}，以 \texttt{HuggingFaceVLA/smolvla\_libero} 作為凍結慢速規劃器，並在 HFRVLA LeRobotDataset v3 中記錄 base action、慢速規劃器語意脈絡、chunk index、機器人狀態、expert action 與 DINOv3 腕部影像 patch features。快速路徑只訓練一個 7 維動作殘差模組，部署時採用
+\begin{equation*}
+  \afinal = \abase + \alpha \cdot \clip(\deltah, -\dmax, \dmax)
+\end{equation*}
+進行有界合併。此設計刻意保留 slow planner 的全域任務理解，同時讓高頻新視覺證據來自腕部相機。
+
+實驗以 LIBERO-Spatial 為主要分析對象，並以 eval registry 追蹤所有 sweep。同步 plan=50 execution/replan sweep 顯示，\method{} 在 $K=2,4,8,16,32,50$ 的成功率分別為 $79\%,80\%,71\%,75\%,59\%,53\%$，對應 \smolvla{} 為 $72\%,65\%,60\%,57\%,50\%,40\%$；但在 $K=1$ 下 \method{} 為 $75\%$，低於 baseline 的 $79\%$。同步 matched chunk sweep 顯示，當 $K\geq4$ 時 \method{} 多數設定優於 baseline，但長 chunk 仍明顯困難。Residual calibration 顯示殘差權限必須限制；plan=50、exec=8 設定下 $\alpha=0.75,\delta_{\max}=0.2$ 達到 $41/50=82\%$。唯一 async-timestep planner-delay stress test 顯示，在 delay $d=1..4$ 時 fast residual 相對 disable-fast wrapper 呈現較高成功率。
+
+本論文主張 \method{} 應被理解為凍結 VLA action chunk 的有界局部修正層，而非頻繁重規劃、完整非同步排程或真實機器人驗證的替代品。未來仍需 multi-seed、causal visual ablations、same-backbone A2C2 comparison 與 real-robot validation 才能形成更強結論。
+
+\vspace{1cm}
+
+\textbf{關鍵字：}視覺語言動作模型、動作片段、機器人操作、腕部相機、殘差修正、DINO 特徵、LeRobot

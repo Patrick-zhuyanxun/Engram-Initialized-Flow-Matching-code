@@ -1,0 +1,89 @@
+\chapter{研究方法}
+\label{ch:method}
+
+\section{系統總覽}
+
+\method{} 的訓練與推論流程包含四個部分：凍結 \smolvla{} slow planner、HFRVLA dataset/cache、DINOv3 wrist feature extraction、以及 fast residual module。Slow planner 只提供 base action 與 context，不參與更新；fast module 是唯一 trainable component。
+
+\section{HFRVLA LeRobotDataset v3}
+
+本研究不直接以 raw LIBERO observation 訓練 residual module，而是先建立 HFRVLA LeRobotDataset v3。此資料集把 frozen slow planner 的 intermediate outputs 與 DINO wrist features 寫入每個 frame，使訓練時不需要重跑 \smolvla{} 與 DINOv3。
+
+\begin{table}[htbp]
+  \centering
+  \caption{HFRVLA dataset feature contract。}
+  \label{tab:dataset_contract}
+  \begin{tabular}{lll}
+    \toprule
+    Feature & Shape & Thesis role \\
+    \midrule
+    \texttt{observation.images.image} & $(256,256,3)$ & third-person image \\
+    \texttt{observation.images.image2} & $(256,256,3)$ & wrist image \\
+    \texttt{observation.state} & $(8,)$ & robot state \\
+    \texttt{action} & $(7,)$ & expert action \\
+    \texttt{observation.extra.a\_base} & $(7,)$ & frozen \smolvla{} base action \\
+    \texttt{observation.extra.k\_idx\_norm} & $(1,)$ & normalized chunk index \\
+    \texttt{observation.extra.z\_goal} & $(960,)$ & slow text/task context \\
+    \texttt{observation.extra.z\_phase} & $(480,)$ & slow action/expert context \\
+    \texttt{observation.extra.dino\_patches} & $(196,384)$ & wrist DINO patch tokens \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+已驗證的本地 dataset root 為：
+
+\begin{quote}
+\texttt{checkpoints/HFRVLA\_libero\_v1\_merged\_reindexed}
+\end{quote}
+
+此 dataset 目前包含 1693 episodes、273465 frames 與 40 tasks。其 feature schema 是本論文方法與實驗可重現性的基礎。
+
+\section{DINOv3 腕部 patch features}
+
+Fast path 的高頻新視覺證據來自 wrist camera，也就是 \texttt{observation.images.image2}。本研究使用 frozen DINOv3 ViT-S/16 feature extractor，將 wrist image 轉為 patch tokens。以 224 by 224 preprocessing 與 16 by 16 patch size 計算，輸出為 14 by 14 共 196 個 patch tokens，每個 token 維度為 384。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.72\textwidth]{fig_dino_patch_grid_preview.png}
+  \caption{Wrist image 的 DINO patch grid preview。Patch tokens 保留局部空間結構，使 fast residual module 能讀取 gripper-relative visual evidence。}
+  \label{fig:dino_patch_grid}
+\end{figure}
+
+DINO features 在本文中的角色有三點。第一，它們提供 frozen dense visual representation，降低 fast module 訓練成本。第二，patch tokens 保留 wrist image lattice，適合表示 gripper tip、object edge 與 contact neighborhood。第三，DINO visualization 只用於 pipeline inspection；它不能單獨證明模型決策的因果來源。
+
+\section{Fast residual module}
+
+Fast residual module 的輸入包含 wrist DINO patches、robot state、selected base action、chunk index、slow-planner context，以及訓練視窗中的 previous/current information。輸出為 7 維 residual $\deltah$，對應 LIBERO action 的各自由度。
+
+訓練目標採用 simultaneous residual supervision：
+
+\begin{equation}
+  \Delta a^\star_t = a^{expert}_t-a_{\mathrm{base},t}.
+  \label{eq:target_delta}
+\end{equation}
+
+模型以 residual prediction loss 逼近 $\Delta a^\star_t$。部署時不直接使用 unbounded prediction，而是使用式~\ref{eq:merge} 的 clipped merge。此處 $\alpha$ 與 $\dmax$ 控制 fast path 的 residual authority，是本文 calibration sweep 的主要變數。
+
+\section{目前方法限制}
+
+目前訓練 target 是 simultaneous target，即 $a_{\mathrm{base},t}$ 來自同一時間點的 slow planner output。然而 long-chunk deployment 的 $\abase$ 可能來自較早 observation 產生的 chunk。因此，未來更合理的 target 是 chunk-age 或 stale-target supervision：
+
+\begin{equation}
+  \Delta a^\star_{t,k}=a^{expert}_t-a^{base}_{t-k,k}.
+\end{equation}
+
+這是本文後續工作的核心方向之一。
+
+\section{Implementation artifacts}
+
+\method{} 以 LeRobot plugin 形式實作，主要程式包含：
+
+\begin{itemize}
+  \item \texttt{policy/lerobot\_policy\_hfrvla/src/lerobot\_policy\_hfrvla/configuration\_hfrvla.py}
+  \item \texttt{policy/lerobot\_policy\_hfrvla/src/lerobot\_policy\_hfrvla/modeling\_hfrvla.py}
+  \item \texttt{policy/lerobot\_policy\_hfrvla/src/lerobot\_policy\_hfrvla/fast\_wrist\_residual.py}
+  \item \texttt{scripts/record\_hfrvla\_libero.py}
+  \item \texttt{scripts/package\_hfrvla\_checkpoint.py}
+\end{itemize}
+
+所有 paper-facing results 皆由 eval registry 追蹤，而不是直接從 terminal logs 手抄。

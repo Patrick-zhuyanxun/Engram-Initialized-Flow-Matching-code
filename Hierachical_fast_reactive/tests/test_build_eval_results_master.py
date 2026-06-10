@@ -225,6 +225,63 @@ def test_build_master_rows_expands_sweep_profile(tmp_path):
     assert row["checkpoint_id"] == "smolvla_libero"
 
 
+def test_build_master_rows_preserves_planner_delay_fields(tmp_path):
+    repo_root = tmp_path / "repo"
+    source_csv = repo_root / "outputs/async_timestep_planner_delay_eval_sweep/results.csv"
+    row = source_row("hfrvla", "libero_spatial")
+    row.update(
+        {
+            "planner_delay_mode": "async_timestep",
+            "planner_delay_steps": "4",
+            "planner_delay_fallback": "hold_last",
+            "async_request_interval_steps": "8",
+            "fallback_steps_total": "2",
+            "fallback_steps_mean": "0.02",
+            "slow_replan_count": "713",
+            "slow_chunk_latency_ms_mean": "275.3",
+            "fast_latency_ms_mean": "10.7",
+            "fast_applied_ratio": "1.0",
+            "delta_norm_mean": "0.856",
+            "delta_clip_fraction_mean": "0.391",
+            "k_mean": "7.386",
+            "async_request_count": "12",
+            "async_activation_count": "12",
+            "async_chunk_start_index_last": "4",
+            "async_chunk_start_index_mean": "4.0",
+            "async_dropped_old_queue_steps_last": "4",
+            "async_dropped_old_queue_steps_mean": "4.0",
+        }
+    )
+    write_csv(source_csv, [row])
+
+    rows = build_master_rows(
+        [
+            {
+                "source_csv": "outputs/async_timestep_planner_delay_eval_sweep/results.csv",
+                "sweep_id": "async_timestep_planner_delay_eval_sweep",
+                "policy": "hfrvla",
+                "metadata_profile": "hfrvla_30k",
+            }
+        ],
+        repo_root=repo_root,
+    )
+
+    assert len(rows) == 1
+    out = rows[0]
+    assert out["sweep_type"] == "planner_delay_sweep"
+    assert out["comparison_axis"] == "planner_delay_steps"
+    assert out["planner_delay_mode"] == "async_timestep"
+    assert out["planner_delay_steps"] == "4"
+    assert out["planner_delay_fallback"] == "hold_last"
+    assert out["async_request_interval_steps"] == "8"
+    assert out["fallback_steps_total"] == "2"
+    assert out["slow_replan_count"] == "713"
+    assert out["fast_latency_ms_mean"] == "10.7"
+    assert out["delta_clip_fraction_mean"] == "0.391"
+    assert out["async_chunk_start_index_mean"] == "4.0"
+    assert out["async_dropped_old_queue_steps_mean"] == "4.0"
+
+
 def test_render_csv_is_stable_and_includes_header(tmp_path):
     repo_root = tmp_path / "repo"
     source_csv = repo_root / "outputs/sweep/results.csv"

@@ -1,0 +1,120 @@
+# Research State - HFRVLA
+
+project:
+  title: "HFRVLA: Hierarchical Fast-Reactive VLA"
+  question: "Can a small wrist-camera residual module improve frozen SmolVLA action-chunk execution without fine-tuning the slow planner?"
+  status: active
+  started: "2026-06-04"
+  domain: "robot learning / vision-language-action policies"
+
+agent_continuity:
+  requested_by_skill: true
+  status: unavailable_in_current_codex_session
+  note: "The autoresearch skill requires a session-bound cron.add or /loop command. No cron.add tool is exposed in this Codex session, so the loop was not created."
+
+literature:
+  key_papers: []
+  open_problems:
+    - "Real-hardware transfer is still untested; current evidence is LIBERO simulation."
+    - "Long matched action chunks remain difficult for both SmolVLA and HFRVLA."
+    - "Residual deployment scale is alpha/clip sensitive and needs calibration evidence."
+  evidence_gaps:
+    - "Run a focused related-work survey on action-chunk correction, A2C2-style residual policies, fast-slow robot control, and frozen VLA adaptation."
+    - "Add paper-level citations before converting these findings into manuscript claims."
+
+hypotheses:
+  - id: H1
+    statement: "A wrist-camera residual correction module can improve frozen SmolVLA under moderate chunk execution."
+    status: supported
+    motivation: "The residual path can use per-step wrist evidence while reusing the slow planner's action and latent context."
+    parent: null
+    priority: high
+    current_evidence: "A2C2-wrist 30k with alpha=0.75, delta_max=0.2 reaches 88.0% combined success at planning=50, execution=8; SmolVLA at planning=50, execution=8 is 77.0% in the registry."
+  - id: H2
+    statement: "Long-horizon fast wrist residual performance depends on training against stale generated chunk actions, not only current-frame residuals."
+    status: active
+    motivation: "The 2026-06-04 audit found that current FWR training uses a current raw residual target while deployment corrects older chunk actions under the latest wrist observation."
+    parent: null
+    priority: high
+    current_evidence: "FWR action-step 10x10 peaks at 81.5% combined for planning=50, execution=1 and falls to 75.5% at execution=8; code audit shows fast_wrist loss is MSE(delta, expert-current_a_base) and fast-cache v3 reconstructs action chunks from frame-level a_base rather than storing generated chunks with age."
+  - id: H3
+    statement: "Residual scale calibration explains much of the gap between helpful corrections and degraded performance."
+    status: active
+    motivation: "The alpha/clip sweep shows a sharp optimum and degradation when the effective residual cap is too large."
+    parent: H1
+    priority: high
+    current_evidence: "At planning=50, execution=8, alpha=0.75 and delta_max=0.2 gives 88.0%, while alpha=1.0 and delta_max=0.4 gives 65.0%."
+  - id: H4
+    statement: "Long matched chunk failures are dominated by open-loop execution drift that wrist residuals only partially correct."
+    status: active
+    motivation: "Both policies degrade at long matched chunks, suggesting the problem is not only residual model capacity."
+    parent: null
+    priority: medium
+    current_evidence: "Matched chunk K=50 drops to 46.0% for HFRVLA and 43.0% for SmolVLA; HFRVLA retains a small margin but not high absolute success."
+  - id: H5
+    statement: "Deployment-aligned final-action loss will reduce alpha/clip fragility."
+    status: active
+    motivation: "Inference sends a clipped and scaled residual, but fast-wrist training currently optimizes raw current residual MSE."
+    parent: H3
+    priority: high
+    current_evidence: "Alpha=0.75, delta_max=0.2 reaches 88.0% at planning=50/execution=8, while alpha=1.0, delta_max=0.4 falls to 65.0%; unit tests confirm the current fast-wrist objective is raw current residual."
+
+experiments:
+  proxy_metric: "Combined LIBERO Spatial + Object success rate from experiments/eval_registry/eval_results_master.csv."
+  baseline_value: 77.0
+  baseline_context: "SmolVLA, planning_chunk_size=50, execution_chunk_size=8, 100 combined episodes."
+  best_value: 88.0
+  best_context: "HFRVLA A2C2-wrist 30k, planning_chunk_size=50, execution_chunk_size=8, alpha=0.75, delta_max=0.2, 100 combined episodes."
+  total_registry_rows: 193
+  total_combined_rows: 57
+  trajectory:
+    - run_id: "smolvla_plan50_exec8"
+      hypothesis: "baseline"
+      metric_value: 77.0
+      delta: 0.0
+      wall_time_min: null
+      change_summary: "Frozen SmolVLA baseline at planning=50, execution=8."
+      timestamp: "2026-05-27T14:58:24+00:00"
+    - run_id: "a2c2_30k_alpha05_plan50_exec8"
+      hypothesis: "H1"
+      metric_value: 81.0
+      delta: 4.0
+      wall_time_min: null
+      change_summary: "A2C2-wrist 30k with alpha=0.5 at planning=50, execution=8."
+      timestamp: "2026-05-27T14:58:24+00:00"
+    - run_id: "a2c2_30k_alpha075_clip02_plan50_exec8"
+      hypothesis: "H1/H3"
+      metric_value: 88.0
+      delta: 11.0
+      wall_time_min: null
+      change_summary: "A2C2-wrist 30k with tuned residual scale alpha=0.75, delta_max=0.2."
+      timestamp: "2026-05-28"
+    - run_id: "fwr_action10x10_plan50_exec8"
+      hypothesis: "H2"
+      metric_value: 75.5
+      delta: -1.5
+      wall_time_min: null
+      change_summary: "FWR 50k action-step 10x10 sweep at planning=50, execution=8."
+      timestamp: "2026-06-02T20:33:41+00:00"
+    - run_id: "fwr_chunk10x10_k1"
+      hypothesis: "H2"
+      metric_value: 80.5
+      delta: 3.5
+      wall_time_min: null
+      change_summary: "FWR 50k matched chunk 10x10 sweep at K=1."
+      timestamp: "2026-06-03T17:01:01+00:00"
+
+outer_loop:
+  cycle: 1
+  last_direction: deepen
+  last_reflection: "2026-06-04 audit found no evidence that the core framing is invalid. The most likely blockers are stale-chunk training target mismatch, deployment merge/loss mismatch, and insufficient runtime instrumentation for fast-applied ratio/action age. Next step is not architecture replacement but data/loss/runtime alignment."
+
+workspace:
+  findings: "findings.md"
+  log: "research-log.md"
+  literature_dir: "literature/"
+  experiments_dir: "experiments/"
+  to_human_dir: "to_human/"
+  paper_dir: "paper/"
+  latest_human_report: "to_human/hfrvla_training_inference_audit_2026-06-04.md"
+  reusable_code_dir: "src/"

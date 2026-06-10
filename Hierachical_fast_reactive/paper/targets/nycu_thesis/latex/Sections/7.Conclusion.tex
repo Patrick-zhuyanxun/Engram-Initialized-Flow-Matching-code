@@ -1,0 +1,12 @@
+\chapter{結論}
+\label{ch:conclusion}
+
+本論文研究凍結 \smolvla{} action chunks 在 stale execution regime 下是否能透過小型 wrist-camera residual module 改善。研究動機來自 VLA inference cost 與 action chunking 的 closed-loop trade-off：chunking 減少 slow planner 呼叫，但 later chunk actions 可能基於過期 observation 執行。
+
+\method{} 保留 \smolvla{} 作為 frozen slow planner，將高頻新視覺證據限制在 wrist DINO patches，並透過 $a_{\mathrm{final}}=a_{\mathrm{base}}+\alpha\cdot\clip(\Delta a)$ 執行有界 residual merge。此設計讓方法不是重訓 VLA，也不是完整 async scheduler，而是一個可插拔的 bounded local correction layer。
+
+LIBERO-Spatial 結果顯示，\method{} 在同步 plan=50 execution/replan sweep 的 $K=2$ 到 $K=50$ 設定皆高於 \smolvla{}，但在 $K=1$ 低於 baseline。Matched chunk sweep 顯示 $K\geq4$ 多數設定有改善，但 long chunk 的 absolute success rate 仍下降。Residual calibration 顯示 $\alpha$ 與 $\delta_{\max}$ 必須校準；async planner-delay sweep 顯示 fast residual 在 chunk late arrival 時可減緩 degradation。
+
+本論文的主要限制包括：目前證據是 single-seed LIBERO simulation；尚未完成 multi-seed、causal visual ablation、direct A2C2 same-backbone comparison 與 real-robot validation；目前 residual target 仍是 simultaneous target，尚未與 stale chunk-age deployment 完全對齊。
+
+未來研究應優先完成三項工作。第一，使用 delayed base chunks 建立 chunk-age residual target。第二，進行 no-DINO、wrist masking、patch masking 與 latent-context removal，以釐清 wrist visual evidence 的因果貢獻。第三，在同一 slow planner、同一 chunk protocol 與同一 evaluation script 下進行 A2C2-style same-backbone comparison，並進一步移植到真實機器人 tabletop manipulation。

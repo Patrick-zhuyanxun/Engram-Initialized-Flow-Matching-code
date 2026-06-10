@@ -28,6 +28,7 @@ __pycache__/
 .claude/
 .codex/
 .gemini/
+.claude_resources.json
 
 # Frontend dependencies and build outputs.
 node_modules/

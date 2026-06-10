@@ -2,7 +2,7 @@
 
 > Contract for the implementing agent (Codex).
 > Verifier: Claude. Author: Patrick Chu.
-> Last updated: 2026-06-05.
+> Last updated: 2026-06-07.
 
 This document is the **single source of truth** for implementation. Any
 deviation must be flagged and justified.
@@ -165,6 +165,9 @@ class HFRVLAConfig(SmolVLAConfig):
 
     # Inference
     safety_joint_velocity_limit: float = 2.0   # residual-only per-DoF limit
+    inference_disable_fast: bool = False       # return popped/held a_base only
+    planner_delay_steps: int = 0               # eval-time slow chunk delay
+    planner_delay_fallback: str = "hold_last"  # hold_last or zero
 
     name: str = "hfrvla"
 ```
@@ -388,13 +391,18 @@ class HFRVLAPolicy(SmolVLAPolicy):
 ```python
 def select_action(self, batch, **kwargs):
     """At every call:
-       1. If SmolVLA's action queue is empty → call _get_action_chunk()
-          (this triggers SmolVLA forward, which populates _zgoal_cache and
-          _zphase_cache via hooks).
-       2. Pop a_base from the queue.
-       3. Run self.fast(wrist_rgb, proprio, a_base, k_idx, z_goal, z_phase, h_state).
-       4. Compute a_final via the merge formula, clamping only the fast residual.
-       5. Return a_final.
+       1. Cold-start synchronously if no base action exists yet.
+       2. Every async_request_interval_steps=N control steps, request a slow
+          planner chunk from observation o_t.
+       3. Mark that chunk ready at t+d, where d=planner_delay_steps.
+       4. At ready time, replace the active queue immediately and enqueue from
+          A_t[d], not A_t[0].
+       5. If no queued base action is available before a pending chunk is ready,
+          use planner_delay_fallback (main experiment: hold_last).
+       6. Pop or hold a_base, then run self.fast(wrist_rgb, proprio, a_base,
+          k_idx, z_goal, z_phase, h_state) unless inference_disable_fast=True.
+       7. Compute a_final via the merge formula, clamping only the fast residual.
+       8. Return a_final or, when inference_disable_fast=True, return a_base.
     """
 ```
 

@@ -1,0 +1,60 @@
+\chapter{緒論}
+\label{ch:intro}
+
+\section{研究背景}
+
+近年 robot foundation model 將語言、視覺與動作預測整合到同一個策略中，形成 RT-1、RT-2、OpenVLA、Octo、$\pi_0$ 與 \smolvla{} 等 vision-language-action（VLA）模型~\cite{brohan2022rt1,brohan2023rt2,kim2024openvla,ghosh2024octo,black2024pi0,shukor2025smolvla}。這類模型的價值在於能直接根據任務語言與多模態觀察產生機器人動作；然而，高容量模型推論成本也讓每一個 control tick 都重新執行完整 VLA planner 變得不實際。
+
+Action chunking 是目前常見的折衷。慢速 planner 一次產生一段 action chunk，robot 在下一次 replan 前依序執行 chunk 內動作。這降低 planner 呼叫頻率，卻造成一個容易被忽略的閉迴路問題：chunk 後段 action 是根據較早 observation 產生的，執行時 wrist view、object pose、gripper contact 與 robot state 都可能已經改變。本文將此稱為 stale action chunk execution。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.98\textwidth]{fig1_problem_schematic.png}
+  \caption{Tail-overlapped async planning 下仍存在的回授缺口。Robot 連續執行 chunk A 與 chunk B；下一段 SmolVLA inference 只和目前 execution chunk 的尾段重疊，並在 chunk switch 時 ready。這避免 idle gap，但長 execution segment 的中段仍使用過期 visual feedback。圖中 $H$ 為 planned action horizon，$e$ 為實際執行段，$K$ 為 replan interval，$d$ 為 SmolVLA compute delay。}
+  \label{fig:problem_schematic}
+\end{figure}
+
+本研究不是要訓練一個更大的 VLA，也不是要改寫完整 real-time scheduler；而是研究一個較窄但可實驗驗證的問題：若 slow VLA planner 已經凍結，是否能在 action 執行前加入一個小型 fast residual module，用目前腕部相機看到的局部視覺證據修正下一個 base action？
+
+\section{待解決問題}
+
+本文的問題鏈如下：
+
+\begin{quote}
+VLA 推論昂貴，因此需要 action chunking；action chunking 降低 planner 呼叫頻率，但 chunk 後段動作會因 observation 過期而失準；若此失準主要反映 gripper-relative local geometry 的變化，腕部相機可能提供足夠的當下證據；因此可以用有界 residual correction 補償 frozen planner 的下一個 action。
+\end{quote}
+
+這個問題與單純比較模型大小不同。若 \smolvla{} 每一步都重規劃，slow planner 已經能看見最新 observation，fast residual 不一定有幫助，甚至可能破壞原本正確的 action。因此本文評估時必須明確區分 planning horizon、execution horizon 與 replan interval，而不能把 default every-step replanning 當作所有 chunk 設定的 baseline。
+
+\section{研究問題}
+
+本論文的核心研究問題為：
+
+\begin{quote}
+在凍結 \smolvla{} slow planner 的情況下，小型 wrist-camera residual module 是否能改善 frozen VLA action chunk 的執行，特別是在 execution interval 變長或 planner chunk 延遲抵達的 stale-action regime？
+\end{quote}
+
+此核心問題拆成五個子問題：
+
+\begin{enumerate}
+  \item 在同步 plan=50 execution/replan sweep 中，\method{} 相對 \smolvla{} 於哪些 execution interval 有成功率改善？
+  \item 在同步 matched chunk sweep 中，當 planning、execution 與 replan interval 均為 $K$ 時，wrist residual correction 是否仍有幫助？
+  \item 殘差合併中的 $\alpha$ 與 $\delta_{\max}$ 如何影響成功率？
+  \item 在 async-timestep planner-delay stress test 中，fast residual 是否能減緩 chunk late arrival 的退化？
+  \item 在缺少 multi-seed、causal vision ablations 與 real-robot validation 的情況下，目前結果能支持哪些 claim，不能支持哪些 claim？
+\end{enumerate}
+
+\section{研究貢獻}
+
+本文貢獻如下：
+
+\begin{enumerate}
+  \item \textbf{凍結 VLA action chunk 的腕部相機殘差修正。} 本研究將 \texttt{HuggingFaceVLA/smolvla\_libero} 固定為 slow planner，只訓練小型 fast residual module，讓研究焦點集中在 execution-time correction。
+  \item \textbf{LeRobot-native 研究 artifact。} 本研究建立 \texttt{lerobot\_policy\_hfrvla} policy plugin、HFRVLA LeRobotDataset v3、cached SmolVLA/DINO features、checkpoint packaging 與 eval registry。
+  \item \textbf{明確拆分 planning 與 execution protocol。} 所有結果記錄 \texttt{planning\_chunk\_size}、\texttt{execution\_chunk\_size} 與 \texttt{replan\_interval\_steps}，避免錯誤比較不同 runtime contract。
+  \item \textbf{Success-rate-first 的實驗紀錄。} 本論文以 LIBERO-Spatial success rate 作為主指標，並將 calibration、async delay 與未完成 ablations 分層呈現。
+\end{enumerate}
+
+\section{論文架構}
+
+第~\ref{ch:relatedwork} 章回顧 VLA、action chunking、fast-slow correction、wrist vision 與 DINO dense features。第~\ref{ch:framework} 章定義研究架構與 thesis claim boundary。第~\ref{ch:method} 章描述 \method{} 的資料、模型與訓練方法。第~\ref{ch:experiments} 章定義實驗 protocol。第~\ref{ch:results} 章呈現 success-rate 結果與討論。第~\ref{ch:conclusion} 章總結本文貢獻與後續研究。

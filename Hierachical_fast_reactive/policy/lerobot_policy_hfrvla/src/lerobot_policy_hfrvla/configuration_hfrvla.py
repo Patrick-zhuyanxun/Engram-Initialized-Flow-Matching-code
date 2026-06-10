@@ -153,6 +153,14 @@ class HFRVLAConfig(SmolVLAConfig):
     # action) and skips the fast module entirely. Use for I/O alignment tests
     # against the SmolVLA baseline before training the fast module.
     inference_disable_fast: bool = False
+    # Simulate slow-planner chunk generation latency at eval/deployment time:
+    # request at step t, ready at t+d, immediate queue replacement, and execute
+    # from A_t[d]. The field is kept serialized for eval auditability.
+    planner_delay_mode: str = "async_timestep"
+    planner_delay_steps: int = 0
+    planner_delay_fallback: str = "hold_last"
+    async_request_interval_steps: int = 8
+    planner_delay_trace_max_events: int = 128
 
     # ── Misc ──
     name: str = "hfrvla"
@@ -204,6 +212,25 @@ class HFRVLAConfig(SmolVLAConfig):
     def __post_init__(self) -> None:
         super().__post_init__()
         self.normalize_deprecated_aliases()
+        self.planner_delay_steps = int(self.planner_delay_steps)
+        if self.planner_delay_steps < 0:
+            raise ValueError("planner_delay_steps must be >= 0")
+        self.planner_delay_fallback = str(self.planner_delay_fallback).strip().lower()
+        if self.planner_delay_fallback not in {"hold_last", "zero"}:
+            raise ValueError("planner_delay_fallback must be 'hold_last' or 'zero'")
+        self.planner_delay_mode = str(self.planner_delay_mode).strip().lower()
+        if self.planner_delay_mode != "async_timestep":
+            raise ValueError("planner_delay_mode must be 'async_timestep'")
+        self.async_request_interval_steps = int(self.async_request_interval_steps)
+        if self.async_request_interval_steps <= 0:
+            raise ValueError("async_request_interval_steps must be > 0")
+        self.planner_delay_trace_max_events = int(self.planner_delay_trace_max_events)
+        if self.planner_delay_trace_max_events < 0:
+            raise ValueError("planner_delay_trace_max_events must be >= 0")
+        if self.async_request_interval_steps + self.planner_delay_steps > self.n_action_steps:
+            raise ValueError(
+                "async_request_interval_steps + planner_delay_steps must be <= n_action_steps"
+            )
 
     # ────────────────────────────────────────────────────────────────────
     def validate_features(self) -> None:

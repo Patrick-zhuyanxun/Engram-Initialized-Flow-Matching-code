@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections import deque
 from pathlib import Path
+import time
 from typing import Optional
 
 import torch
@@ -266,6 +267,20 @@ class HFRVLAPolicy(SmolVLAPolicy):
         self._prev_a_base: Optional[Tensor] = None
         self._prev_delta_exec: Optional[Tensor] = None
         self._current_a_base_chunk: Optional[Tensor] = None
+        self._last_base_action: Optional[Tensor] = None
+        self._pending_a_base_chunk: Optional[Tensor] = None
+        self._pending_zgoal_cache: Optional[Tensor] = None
+        self._pending_zphase_cache: Optional[Tensor] = None
+        self._pending_chunk_ready_in: int = 0
+        self._pending_request_step: Optional[int] = None
+        self._pending_observation_step: Optional[int] = None
+        self._pending_ready_step: Optional[int] = None
+        self._pending_chunk_start_index: int = 0
+        self._async_control_step: int = 0
+        self._async_next_request_step: int = int(
+            getattr(self.config, "async_request_interval_steps", 8)
+        )
+        self._active_chunk_start_index: int = 0
         self._chunk_size: int = self.config.n_action_steps
         self._chunk_consumed: int = 0
         self._queues = {
@@ -284,6 +299,33 @@ class HFRVLAPolicy(SmolVLAPolicy):
             "delta_norm_sum": 0.0,
             "delta_clip_fraction_sum": 0.0,
             "k_sum": 0.0,
+            "slow_chunk_latency_ms_sum": 0.0,
+            "slow_chunk_latency_calls": 0,
+            "fast_latency_ms_sum": 0.0,
+            "fast_latency_calls": 0,
+            "planner_delay_mode": str(getattr(self.config, "planner_delay_mode", "async_timestep")),
+            "planner_delay_steps": int(getattr(self.config, "planner_delay_steps", 0)),
+            "async_request_interval_steps": int(
+                getattr(self.config, "async_request_interval_steps", 8)
+            ),
+            "planner_delay_requests": 0,
+            "delayed_chunks_enqueued": 0,
+            "async_request_count": 0,
+            "async_activation_count": 0,
+            "async_skipped_request_count": 0,
+            "async_request_step_last": -1,
+            "async_observation_step_last": -1,
+            "async_ready_step_last": -1,
+            "async_activate_step_last": -1,
+            "async_chunk_start_index_last": 0,
+            "async_chunk_start_index_sum": 0.0,
+            "async_dropped_old_queue_steps_last": 0,
+            "async_dropped_old_queue_steps_sum": 0.0,
+            "async_trace_event_count": 0,
+            "async_event_trace": [],
+            "fallback_steps": 0,
+            "hold_last_fallback_steps": 0,
+            "zero_fallback_steps": 0,
         }
 
     def _ensure_inference_debug_stats(self) -> dict[str, float | int]:
@@ -314,6 +356,16 @@ class HFRVLAPolicy(SmolVLAPolicy):
         )
         stats["k_sum"] += float(k)
 
+    def _record_slow_chunk_latency(self, elapsed_s: float) -> None:
+        stats = self._ensure_inference_debug_stats()
+        stats["slow_chunk_latency_ms_sum"] += float(elapsed_s * 1000.0)
+        stats["slow_chunk_latency_calls"] += 1
+
+    def _record_fast_latency(self, elapsed_s: float) -> None:
+        stats = self._ensure_inference_debug_stats()
+        stats["fast_latency_ms_sum"] += float(elapsed_s * 1000.0)
+        stats["fast_latency_calls"] += 1
+
     def get_inference_debug_stats(self) -> dict[str, float | int]:
         """Return counters plus aggregate ratios for eval/deployment auditing."""
         stats = dict(self._ensure_inference_debug_stats())
@@ -323,6 +375,18 @@ class HFRVLAPolicy(SmolVLAPolicy):
         stats["delta_norm_mean"] = float(stats["delta_norm_sum"]) / applied
         stats["delta_clip_fraction_mean"] = float(stats["delta_clip_fraction_sum"]) / applied
         stats["k_mean"] = float(stats["k_sum"]) / applied
+        slow_calls = max(1, int(stats["slow_chunk_latency_calls"]))
+        fast_calls = max(1, int(stats["fast_latency_calls"]))
+        stats["slow_chunk_latency_ms_mean"] = float(stats["slow_chunk_latency_ms_sum"]) / slow_calls
+        stats["fast_latency_ms_mean"] = float(stats["fast_latency_ms_sum"]) / fast_calls
+        stats["slow_replan_count"] = int(stats["new_chunks"])
+        async_activations = max(1, int(stats.get("async_activation_count", 0)))
+        stats["async_chunk_start_index_mean"] = (
+            float(stats.get("async_chunk_start_index_sum", 0.0)) / async_activations
+        )
+        stats["async_dropped_old_queue_steps_mean"] = (
+            float(stats.get("async_dropped_old_queue_steps_sum", 0.0)) / async_activations
+        )
         return stats
 
     # ────────────────────────────────────────────────────────────────────
@@ -421,8 +485,228 @@ class HFRVLAPolicy(SmolVLAPolicy):
         self._prev_a_base = None
         self._prev_delta_exec = None
         self._current_a_base_chunk = None
+        self._last_base_action = None
+        self._pending_a_base_chunk = None
+        self._pending_zgoal_cache = None
+        self._pending_zphase_cache = None
+        self._pending_chunk_ready_in = 0
+        self._pending_request_step = None
+        self._pending_observation_step = None
+        self._pending_ready_step = None
+        self._pending_chunk_start_index = 0
+        self._async_control_step = 0
+        self._async_next_request_step = int(
+            getattr(self.config, "async_request_interval_steps", 8)
+        )
+        self._active_chunk_start_index = 0
         self._chunk_consumed = 0
         self._clear_hook_cache()
+
+    # ────────────────────────────────────────────────────────────────────
+    # Planner-delay queue simulation
+    # ────────────────────────────────────────────────────────────────────
+    def _planner_delay_steps(self) -> int:
+        return max(0, int(getattr(self.config, "planner_delay_steps", 0)))
+
+    def _planner_delay_fallback(self) -> str:
+        fallback = str(getattr(self.config, "planner_delay_fallback", "hold_last")).strip().lower()
+        if fallback not in {"hold_last", "zero"}:
+            raise ValueError("planner_delay_fallback must be 'hold_last' or 'zero'")
+        return fallback
+
+    def _async_request_interval_steps(self) -> int:
+        return max(1, int(getattr(self.config, "async_request_interval_steps", 8)))
+
+    def _trace_planner_delay_event(self, event: dict[str, int | str]) -> None:
+        stats = self._ensure_inference_debug_stats()
+        stats["async_trace_event_count"] += 1
+        max_events = int(getattr(self.config, "planner_delay_trace_max_events", 128))
+        if max_events <= 0:
+            return
+        trace = stats.setdefault("async_event_trace", [])
+        if not isinstance(trace, list):
+            trace = []
+            stats["async_event_trace"] = trace
+        trace.append(event)
+        del trace[:-max_events]
+
+    def _request_immediate_action_chunk(self, batch: dict[str, Tensor]) -> None:
+        self._clear_hook_cache()
+        start = time.perf_counter()
+        actions = self._get_action_chunk(batch)
+        self._record_slow_chunk_latency(time.perf_counter() - start)
+        self._current_a_base_chunk = actions.detach()
+        self._queues[ACTION].extend(
+            actions.transpose(0, 1)[: self.config.n_action_steps]
+        )
+        self._active_chunk_start_index = 0
+        self._chunk_consumed = 0
+        self._async_next_request_step = (
+            self._async_control_step + self._async_request_interval_steps()
+        )
+        self._trace_planner_delay_event(
+            {
+                "event": "cold_start",
+                "step": int(self._async_control_step),
+                "observation_step": int(self._async_control_step),
+                "chunk_start_index": 0,
+                "enqueued_steps": int(len(self._queues[ACTION])),
+            }
+        )
+        self._record_inference_new_chunk()
+
+    def _maybe_start_async_timestep_request(self, batch: dict[str, Tensor]) -> bool:
+        if self._pending_a_base_chunk is not None:
+            return False
+        if self._async_control_step < self._async_next_request_step:
+            return False
+        if len(self._queues[ACTION]) == 0 and self._last_base_action is None:
+            return False
+
+        delay_steps = self._planner_delay_steps()
+        request_step = int(self._async_control_step)
+        observation_step = request_step
+        ready_step = request_step + delay_steps
+        chunk_start_index = delay_steps
+
+        active_zgoal = self._zgoal_cache
+        active_zphase = self._zphase_cache
+        self._clear_hook_cache()
+        start = time.perf_counter()
+        actions = self._get_action_chunk(batch)
+        self._record_slow_chunk_latency(time.perf_counter() - start)
+        self._pending_a_base_chunk = actions.detach()
+        self._pending_zgoal_cache = self._zgoal_cache
+        self._pending_zphase_cache = self._zphase_cache
+        self._pending_chunk_ready_in = delay_steps
+        self._pending_request_step = request_step
+        self._pending_observation_step = observation_step
+        self._pending_ready_step = ready_step
+        self._pending_chunk_start_index = chunk_start_index
+        self._zgoal_cache = active_zgoal
+        self._zphase_cache = active_zphase
+        self._async_next_request_step = request_step + self._async_request_interval_steps()
+
+        stats = self._ensure_inference_debug_stats()
+        stats["planner_delay_requests"] += 1
+        stats["async_request_count"] += 1
+        stats["async_request_step_last"] = request_step
+        stats["async_observation_step_last"] = observation_step
+        stats["async_ready_step_last"] = ready_step
+        self._trace_planner_delay_event(
+            {
+                "event": "request",
+                "request_step": request_step,
+                "observation_step": observation_step,
+                "ready_step": ready_step,
+                "delay_steps": delay_steps,
+                "request_interval_steps": self._async_request_interval_steps(),
+            }
+        )
+        self._record_inference_new_chunk()
+        return True
+
+    def _activate_ready_delayed_chunk_if_any(self) -> bool:
+        if self._pending_a_base_chunk is None:
+            return False
+        ready_step = (
+            int(self._pending_ready_step)
+            if self._pending_ready_step is not None
+            else int(self._async_control_step)
+        )
+        if self._async_control_step < ready_step:
+            return False
+
+        chunk_start_index = int(self._pending_chunk_start_index)
+        chunk_len = int(self._pending_a_base_chunk.shape[1])
+        chunk_start_index = max(0, min(chunk_start_index, max(0, chunk_len - 1)))
+        dropped_old_queue_steps = len(self._queues[ACTION])
+        self._queues[ACTION].clear()
+        self._current_a_base_chunk = self._pending_a_base_chunk
+        self._queues[ACTION].extend(
+            self._pending_a_base_chunk.transpose(0, 1)[
+                chunk_start_index : chunk_start_index + self.config.n_action_steps
+            ]
+        )
+        self._zgoal_cache = self._pending_zgoal_cache
+        self._zphase_cache = self._pending_zphase_cache
+        self._pending_a_base_chunk = None
+        self._pending_zgoal_cache = None
+        self._pending_zphase_cache = None
+        self._pending_chunk_ready_in = 0
+        self._active_chunk_start_index = chunk_start_index
+        self._chunk_consumed = 0
+        stats = self._ensure_inference_debug_stats()
+        stats["delayed_chunks_enqueued"] += 1
+        request_step = (
+            int(self._pending_request_step)
+            if self._pending_request_step is not None
+            else int(self._async_control_step)
+        )
+        observation_step = (
+            int(self._pending_observation_step)
+            if self._pending_observation_step is not None
+            else request_step
+        )
+        ready_step = (
+            int(self._pending_ready_step)
+            if self._pending_ready_step is not None
+            else int(self._async_control_step)
+        )
+        stats["async_activation_count"] += 1
+        stats["async_activate_step_last"] = int(self._async_control_step)
+        stats["async_chunk_start_index_last"] = chunk_start_index
+        stats["async_chunk_start_index_sum"] += float(chunk_start_index)
+        stats["async_dropped_old_queue_steps_last"] = dropped_old_queue_steps
+        stats["async_dropped_old_queue_steps_sum"] += float(dropped_old_queue_steps)
+        self._trace_planner_delay_event(
+            {
+                "event": "activate",
+                "request_step": request_step,
+                "observation_step": observation_step,
+                "ready_step": ready_step,
+                "activate_step": int(self._async_control_step),
+                "chunk_start_index": chunk_start_index,
+                "dropped_old_queue_steps": int(dropped_old_queue_steps),
+                "enqueued_steps": int(len(self._queues[ACTION])),
+            }
+        )
+        self._pending_request_step = None
+        self._pending_observation_step = None
+        self._pending_ready_step = None
+        self._pending_chunk_start_index = 0
+        return True
+
+    def _current_chunk_step_index(self) -> int:
+        return max(0, int(self._active_chunk_start_index) + max(0, self._chunk_consumed - 1))
+
+    def _advance_async_control_step_after_action(self) -> None:
+        self._async_control_step += 1
+
+    def _pop_or_fallback_base_action(self) -> tuple[Tensor, bool]:
+        if len(self._queues[ACTION]) > 0:
+            a_base = self._queues[ACTION].popleft()
+            self._chunk_consumed += 1
+            self._last_base_action = a_base.detach()
+            return a_base, False
+
+        stats = self._ensure_inference_debug_stats()
+        stats["fallback_steps"] += 1
+        fallback = self._planner_delay_fallback()
+        if fallback == "hold_last" and self._last_base_action is not None:
+            stats["hold_last_fallback_steps"] += 1
+            a_base = self._last_base_action.clone()
+        else:
+            stats["zero_fallback_steps"] += 1
+            if self._last_base_action is not None:
+                a_base = torch.zeros_like(self._last_base_action)
+            elif self._pending_a_base_chunk is not None:
+                a_base = torch.zeros_like(self._pending_a_base_chunk[:, 0])
+            else:
+                raise RuntimeError("planner delay fallback requested before any base action exists")
+        self._chunk_consumed += 1
+        self._last_base_action = a_base.detach()
+        return a_base, True
 
     # ────────────────────────────────────────────────────────────────────
     # Inference
@@ -446,28 +730,30 @@ class HFRVLAPolicy(SmolVLAPolicy):
         batch = self._prepare_batch(batch)
         self._queues = populate_queues(self._queues, batch, exclude_keys=[ACTION])
 
-        is_new_chunk = self._check_get_actions_condition()
-        if is_new_chunk:
-            self._clear_hook_cache()
-            actions = self._get_action_chunk(batch)
-            self._current_a_base_chunk = actions.detach()
-            self._queues[ACTION].extend(
-                actions.transpose(0, 1)[: self.config.n_action_steps]
-            )
-            self._chunk_consumed = 0
-            self._record_inference_new_chunk()
+        self._activate_ready_delayed_chunk_if_any()
+        if (
+            len(self._queues[ACTION]) == 0
+            and self._last_base_action is None
+            and self._pending_a_base_chunk is None
+        ):
+            self._request_immediate_action_chunk(batch)
+        else:
+            self._maybe_start_async_timestep_request(batch)
+            self._activate_ready_delayed_chunk_if_any()
+            if len(self._queues[ACTION]) == 0 and self._pending_a_base_chunk is None:
+                self._request_immediate_action_chunk(batch)
 
-        a_base = self._queues[ACTION].popleft()
-        self._chunk_consumed += 1
+        a_base, _used_fallback = self._pop_or_fallback_base_action()
 
         # Alignment-test short-circuit: behave exactly like SmolVLA base.
         # Verifies that the HFRVLA wrapper + dataset feature config + action
         # post-processing produce outputs LIBERO env accepts.
         if getattr(self.config, "inference_disable_fast", False):
             self._record_inference_fast_skipped("disabled")
+            self._advance_async_control_step_after_action()
             return a_base
 
-        k = self._chunk_consumed - 1
+        k = self._current_chunk_step_index()
         k_norm_denom = max(
             1,
             (
@@ -478,9 +764,10 @@ class HFRVLAPolicy(SmolVLAPolicy):
                 else self.config.n_action_steps - 1
             ),
         )
+        k_for_feature = min(k, k_norm_denom)
         k_norm = torch.full(
             (a_base.shape[0], 1),
-            k / k_norm_denom,
+            k_for_feature / k_norm_denom,
             device=a_base.device,
             dtype=a_base.dtype,
         )
@@ -492,6 +779,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
             # Hooks never fired (e.g. first call has empty queue but SmolVLA
             # forward path differed); fall back to a_base alone.
             self._record_inference_fast_skipped("hook_cache_miss")
+            self._advance_async_control_step_after_action()
             return a_base
 
         mode = _residual_merge_mode(self.config)
@@ -506,6 +794,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
                 device=a_base.device,
                 dtype=torch.long,
             )
+            fast_start = time.perf_counter()
             fwr_out: FastWristResidualOutput = self.fast(
                 wrist_rgb=wrist_rgb,
                 proprio=proprio,
@@ -516,6 +805,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
                 a_base_chunk=a_base_chunk,
                 chunk_step_idx=chunk_step_idx,
             )
+            self._record_fast_latency(time.perf_counter() - fast_start)
             a_final = self._merge(
                 a_base=a_base,
                 delta_a=fwr_out.delta_a,
@@ -530,6 +820,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
             self._prev_a_base = a_base.detach()
             self._prev_delta_exec = delta_exec.detach()
             self._prev_action = a_final.detach()
+            self._advance_async_control_step_after_action()
             return a_final
 
         if mode == "fast_wrist":
@@ -539,6 +830,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
                 if self._prev_delta_exec is not None
                 else torch.zeros_like(a_base)
             )
+            fast_start = time.perf_counter()
             fwr_out: FastWristResidualOutput = self.fast(
                 wrist_rgb=wrist_rgb,
                 proprio=proprio,
@@ -549,6 +841,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
                 prev_a_base=prev_a_base,
                 prev_delta=prev_delta,
             )
+            self._record_fast_latency(time.perf_counter() - fast_start)
             a_final = self._merge(
                 a_base=a_base,
                 delta_a=fwr_out.delta_a,
@@ -563,8 +856,10 @@ class HFRVLAPolicy(SmolVLAPolicy):
             self._prev_a_base = a_base.detach()
             self._prev_delta_exec = delta_exec.detach()
             self._prev_action = a_final.detach()
+            self._advance_async_control_step_after_action()
             return a_final
 
+        fast_start = time.perf_counter()
         fr_out: FastReactiveOutput = self.fast(
             wrist_rgb=wrist_rgb,
             proprio=proprio,
@@ -574,6 +869,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
             z_phase=self._zphase_cache,
             hidden_state=self._fast_hidden_state,
         )
+        self._record_fast_latency(time.perf_counter() - fast_start)
         self._fast_hidden_state = fr_out.hidden_state
 
         a_final = self._merge(
@@ -584,6 +880,7 @@ class HFRVLAPolicy(SmolVLAPolicy):
         )
         self._record_inference_fast_applied(k=k, delta_a=fr_out.delta_a)
         self._prev_action = a_final.detach()
+        self._advance_async_control_step_after_action()
         return a_final
 
     def _extract_wrist_image(self, batch: dict[str, Tensor]) -> Optional[Tensor]:

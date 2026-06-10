@@ -1,0 +1,84 @@
+\chapter{實驗設計}
+\label{ch:experiments}
+
+\section{Benchmark 與 metric}
+
+本文主要使用 LIBERO-Spatial 作為 simulation benchmark~\cite{liu2023libero}。Spatial tasks 對空間關係與 gripper-object alignment 較敏感，適合觀察 action chunk stale execution 的影響。主要 metric 是 success rate：
+
+\begin{equation}
+  \mathrm{SuccessRate}=\frac{\mathrm{Number\ of\ successful\ episodes}}{\mathrm{Number\ of\ evaluated\ episodes}}\times100\%.
+\end{equation}
+
+本文依使用者需求以 success rate 為主，不把 margin plots 作為主結果。若圖中有 Wilson interval，只用於視覺不確定性輔助，不改變主要 success-rate reporting。
+
+\section{Eval registry}
+
+所有實驗列入：
+
+\begin{quote}
+\texttt{experiments/eval\_registry/eval\_results\_master.csv}
+\end{quote}
+
+此 registry 由 \texttt{scripts/build\_eval\_results\_master.py} 從 source manifest 產生。本文使用 registry 的目的有三個：第一，保存每個結果的 checkpoint、protocol 與 status；第二，避免跨 protocol 手動比較；第三，使 thesis 表格能追溯到原始 sweep source。
+
+\section{Protocol variables}
+
+每個 evaluation 都必須記錄三個 chunk 變數：
+
+\begin{table}[htbp]
+  \centering
+  \caption{Chunk protocol variables。}
+  \label{tab:protocol_vars}
+  \begin{tabular}{ll}
+    \toprule
+    Variable & Meaning \\
+    \midrule
+    \texttt{planning\_chunk\_size} & slow planner 一次產生多少 actions \\
+    \texttt{execution\_chunk\_size} & 執行多少 actions 後才換 chunk 或 replan \\
+    \texttt{replan\_interval\_steps} & slow planner refresh 的控制間隔 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+若不同 policy 使用不同 protocol，其 success rate 不能視為 matched comparison。因此本文將 main sweeps 固定為 \method{} 與 \smolvla{} 使用相同 chunk override。
+
+\section{Synchronous sweeps}
+
+除 planner-delay experiment 外，本文所有主要 sweeps 都使用 synchronous inference。
+
+\subsection{Plan=50 execution/replan sweep}
+
+此 sweep 固定 \texttt{planning\_chunk\_size=50}，並令 \texttt{execution\_chunk\_size=replan\_interval\_steps=K}。此設定測試 slow planner 產生長 chunk 時，不同 execution interval 對 success rate 的影響。
+
+\subsection{Matched chunk sweep}
+
+Matched chunk sweep 設定：
+
+\begin{equation}
+  \texttt{planning\_chunk\_size}=\texttt{execution\_chunk\_size}=\texttt{replan\_interval\_steps}=K.
+\end{equation}
+
+此設定測試真正的 matched long-chunk execution，而不是讓 planner 產生長 chunk 但仍頻繁重規劃。
+
+\section{Residual calibration}
+
+Calibration sweep 改變 $\alpha$ 與 $\delta_{\max}$，觀察 residual authority 對 success rate 的影響。主要圖使用 plan=50、exec=8、每格 50 episodes 的 Spatial sweep。這組實驗回答 fast residual 是不是需要有界，而不是越大越好。
+
+\section{Async-timestep planner-delay stress test}
+
+Planner-delay sweep 是本文唯一 async-timestep inference experiment。Slow planner 在 step $t$ 發出 request，但 chunk 在 $t+d$ 才可用；execution 從 delayed chunk index $d$ 開始。Fast wrist residual 仍在 current timestep 執行。此實驗與 synchronous sweeps 分開報告，避免混合不同 runtime assumption。
+
+\section{Unfinished experiments}
+
+以下項目目前不作為 main-text evidence：
+
+\begin{itemize}
+  \item Dual-view DINO fast residual ablation。
+  \item Latent-context ablation：移除 \texttt{z\_goal}/\texttt{z\_phase}。
+  \item Chunk-age/stale-target training。
+  \item No-residual-clip control sweeps。
+  \item Multi-seed confidence intervals。
+  \item Causal visual ablations：wrist mask、third-person mask、DINO patch masking。
+  \item Direct A2C2 same-backbone comparison。
+  \item Real-robot tabletop validation。
+\end{itemize}

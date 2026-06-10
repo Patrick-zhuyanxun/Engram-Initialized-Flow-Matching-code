@@ -1,0 +1,47 @@
+\chapter{相關研究}
+\label{ch:relatedwork}
+
+\section{Vision-Language-Action 與 robot foundation policies}
+
+RT-1 展示以大規模 real-robot trajectories 訓練 transformer policy 的可能性~\cite{brohan2022rt1}，RT-2 則進一步將 web-scale vision-language knowledge transfer 到 robot control~\cite{brohan2023rt2}。Open X-Embodiment/RT-X 說明跨 embodiment 資料對 generalist robot policy 的重要性~\cite{openx2024}，DROID 補充 in-the-wild manipulation dataset~\cite{khazatsky2024droid}。OpenVLA、Octo、$\pi_0$ 與 \smolvla{} 代表 open-source VLA 和 efficient robot foundation policy 的快速發展~\cite{kim2024openvla,ghosh2024octo,black2024pi0,shukor2025smolvla}。
+
+這些研究主要回答「如何訓練更廣泛、更通用的 robot policy」。\method{} 的問題較窄：當 slow VLA 已存在且不能或不想 fine-tune 時，是否能在 action chunk 執行階段加入 local correction。這個差異也決定了本文的 baseline 必須是同一個 frozen \smolvla{}，而不是容量更大或重新訓練的 VLA。
+
+\section{Action chunking 與 real-time execution}
+
+Action Chunking Transformer 在低成本雙臂操作中展示 action chunking 的實用性~\cite{zhao2023aloha}；Diffusion Policy 則以 receding-horizon execution 生成 visuomotor action sequence~\cite{chi2023diffusionpolicy}。FAST 從 action tokenization 的角度提升 VLA action 表示效率~\cite{pertsch2025fast}。近期 real-time VLA 工作如 RTC、VLASH 與 VLA-RAIL 則直接處理 latency、future-state awareness 或 async linking 問題~\cite{black2025rtc,tang2025vlash,zhao2025vlarail}。
+
+Action chunking 的核心 trade-off 是 throughput 與 reactivity。短 replan interval 讓策略能看到最新 observation，但提高 planner 呼叫成本；長 chunk execution 降低推論成本，但 chunk 後段 action 更可能過期。本文因此不只報告 default replanning，而是系統性拆分 plan=50 execution/replan sweep、matched chunk sweep 與 async planner-delay stress test。
+
+\section{Correction heads 與 fast-slow policies}
+
+A2C2 是本文最接近的 conceptual prior。其核心概念是在 frozen VLA chunks 外加 lightweight correction policy，以最新 observation、base action、time feature 與 policy context 進行 real-time correction~\cite{sendai2025a2c2}。Reactive Diffusion Policy、Fast-in-Slow、DuoCore-FS 與 DynamicVLA 也都從 slow-fast control 或 dynamic manipulation 角度處理 execution-time mismatch~\cite{xue2025rdp,chen2025fastinslow,zou2025duocorefs,xie2026dynamicvla}。
+
+\method{} 與上述工作的差異在於 wrist-centric specialization 與 LeRobot/\smolvla{} setting：高頻新視覺證據來自 wrist DINO patches，而 global task context 仍由 frozen slow planner 提供。本文目前不宣稱完成 direct A2C2 same-backbone comparison；該比較必須在相同 backbone、相同 cache schema、相同 chunk protocol 與相同 evaluation script 下重跑。
+
+\section{Wrist vision 與 dense visual features}
+
+Wrist 或 egocentric camera 能提供 gripper-relative local evidence，對精密操作與接觸附近幾何尤其重要~\cite{jangir2022lookcloser,chuang2024activevision}。DINO、DINOv2、DINOv3 與 Deep ViT dense descriptors 顯示 self-supervised ViT features 能形成具有局部結構的 visual representation~\cite{caron2021dino,oquab2023dinov2,simeoni2025dinov3,amir2021densevit}。R3M、DINOBot 與 CAGE 等工作亦顯示 pretrained visual features 對 robot manipulation 的價值~\cite{nair2023r3m,dipalo2024dinobot,xia2024cage}。
+
+本文採用 DINOv3 wrist patch tokens，而不是只取全圖 embedding，因為 patch-level representation 保留 image lattice 上的局部空間資訊。需要注意的是，attention visualization 只能檢查資料流與模型關注區域，不能單獨構成 causal proof。若要證明 wrist/DINO 是主要因果來源，仍需 no-wrist、no-DINO、patch masking 與 dual-view ablations。
+
+\section{研究缺口}
+
+表~\ref{tab:related_gap} 總結本文定位。既有 VLA 工作強調模型能力與資料規模；real-time VLA 工作強調排程與延遲；A2C2-style work 強調 correction head；wrist/DINO work 強調局部視覺表示。\method{} 的研究缺口是將這些方向收斂到一個可控問題：凍結 \smolvla{} action chunk 執行時，wrist-conditioned bounded residual 是否能改善 stale-action regime。
+
+\begin{table}[htbp]
+  \centering
+  \caption{相關研究方向與本論文研究缺口。}
+  \label{tab:related_gap}
+  \begin{tabular}{p{0.24\textwidth}p{0.32\textwidth}p{0.34\textwidth}}
+    \toprule
+    方向 & 主要解決問題 & 本論文保留的缺口 \\
+    \midrule
+    General VLA & 任務泛化與跨資料集能力 & 未隔離 frozen chunk execution correction \\
+    Action chunking & 降低 planner 呼叫頻率 & chunk 後段 action 可能 stale \\
+    Real-time VLA & latency 與 async execution & 不一定研究小型 wrist residual layer \\
+    A2C2-style correction & frozen chunk correction & 需 wrist-centric SmolVLA/LeRobot 驗證 \\
+    Wrist/DINO features & 局部視覺表示 & 需連到 action residual 與 chunk protocol \\
+    \bottomrule
+  \end{tabular}
+\end{table}

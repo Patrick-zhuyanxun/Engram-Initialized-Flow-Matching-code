@@ -1,0 +1,123 @@
+\begin{scriptsize}
+\begin{longtable}{@{}p{0.25\linewidth}p{0.18\linewidth}p{0.14\linewidth}p{0.16\linewidth}p{0.10\linewidth}r@{}}
+\caption{評估註冊表實驗群組總覽。Rows 代表 master registry 中該 sweep 的列數；status 保留 pending/cached/derived 等 provenance。}\label{tab:registry-inventory}\\
+\toprule
+Sweep & Type & Policies & Suites & Status & Rows \\
+\midrule
+\endfirsthead
+\caption[]{評估註冊表實驗群組總覽。Rows 代表 master registry 中該 sweep 的列數；status 保留 pending/cached/derived 等 provenance。（續）}\\
+\toprule
+Sweep & Type & Policies & Suites & Status & Rows \\
+\midrule
+\endhead
+\midrule
+\multicolumn{6}{r}{續下頁}\\
+\endfoot
+\bottomrule
+\endlastfoot
+\url{action_step8_alpha_clip_sweep} & alpha\_clip\_sweep & hfrvla & combined,libero\_object,libero\_spatial & derived,imported,ok & 36 \\
+\url{action_steps_eval_sweep} & execution\_replan\_sweep & hfrvla,smolvla & combined,libero\_object,libero\_spatial & derived,imported,ok & 30 \\
+\url{action_steps_eval_sweep_no_resclip} & execution\_replan\_sweep & hfrvla & libero\_object,libero\_spatial & pending & 10 \\
+\url{async_timestep_planner_delay_eval_sweep} & planner\_delay\_sweep & hfrvla,hfrvla\_disable\_fast & libero\_spatial & ok & 10 \\
+\url{chunk_size_eval_sweep} & matched\_planning\_execution\_sweep & hfrvla,smolvla & combined,libero\_object,libero\_spatial & derived,ok & 36 \\
+\url{chunk_size_eval_sweep_no_resclip} & matched\_planning\_execution\_sweep & hfrvla & libero\_object,libero\_spatial & pending & 12 \\
+\url{fwr_action_steps_10x10} & execution\_replan\_sweep & hfrvla & combined,libero\_object,libero\_spatial & derived,ok & 21 \\
+\url{fwr_chunk_plan50_exec50_eval} & matched\_planning\_execution\_sweep & hfrvla & combined,libero\_object,libero\_spatial & derived,ok & 3 \\
+\url{fwr_chunk_size_10x10} & matched\_planning\_execution\_sweep & hfrvla & combined,libero\_object,libero\_spatial & derived,ok & 21 \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & matched\_planning\_execution\_sweep & hfrvla,smolvla & libero\_spatial & ok & 14 \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & execution\_replan\_sweep & hfrvla,smolvla & libero\_spatial & ok & 14 \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & learning\_rate\_weight\_decay\_sweep & hfrvla & combined,libero\_object,libero\_spatial & cached,derived & 24 \\
+\url{n50_alpha_clip_spatial_50eps} & alpha\_clip\_sweep & hfrvla & libero\_spatial & cached,ok & 36 \\
+\end{longtable}
+\end{scriptsize}
+
+\begin{scriptsize}
+\begin{longtable}{@{}p{0.24\linewidth}p{0.17\linewidth}p{0.18\linewidth}p{0.18\linewidth}p{0.09\linewidth}p{0.08\linewidth}@{}}
+\caption{Checkpoint and protocol matrix. Tier 欄位定義本文如何使用該 sweep：main、diagnostic、historical 或 pending。}\label{tab:checkpoint-protocol-matrix}\\
+\toprule
+Sweep & Tier & Checkpoint/profile & Protocol & Episodes & Status \\
+\midrule
+\endfirsthead
+\caption[]{Checkpoint and protocol matrix. Tier 欄位定義本文如何使用該 sweep：main、diagnostic、historical 或 pending。（續）}\\
+\toprule
+Sweep & Tier & Checkpoint/profile & Protocol & Episodes & Status \\
+\midrule
+\endhead
+\midrule
+\multicolumn{6}{r}{續下頁}\\
+\endfoot
+\bottomrule
+\endlastfoot
+\url{action_step8_alpha_clip_sweep} & 30k calibration diagnostic & \url{hfrvla_a2c2_wrist_seq2_30k} & plan=50; exec=8 & 100,50 & derived,imported,ok \\
+\url{action_steps_eval_sweep} & historical 30k diagnostic & \url{hfrvla_a2c2_wrist_seq2_30k}; \url{smolvla_libero} & plan=50; exec=16,2,32,4,8 & 100,50 & derived,imported,ok \\
+\url{action_steps_eval_sweep_no_resclip} & pending control & \url{hfrvla_a2c2_wrist_seq2_30k} & plan=50; exec=16,2,32,4,8 & pending/not recorded & pending \\
+\url{async_timestep_planner_delay_eval_sweep} & async diagnostic & \url{hfrvla_a2c2_wrist_seq2_30k} & plan=50; exec=16; delay=0,1,2,3,4 & 100 & ok \\
+\url{chunk_size_eval_sweep} & historical 30k diagnostic & \url{hfrvla_a2c2_wrist_seq2_30k}; \url{smolvla_libero} & plan=16,2,32,4,50,8; exec=16,2,32,4,50,8 & 100,50 & derived,ok \\
+\url{chunk_size_eval_sweep_no_resclip} & pending control & \url{hfrvla_a2c2_wrist_seq2_30k} & plan=16,2,32,4,50,8; exec=16,2,32,4,50,8 & pending/not recorded & pending \\
+\url{fwr_action_steps_10x10} & historical FWR-v2 diagnostic & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & plan=50; exec=1,16,2,32,4,50,8 & 100,200 & derived,ok \\
+\url{fwr_chunk_plan50_exec50_eval} & historical FWR-v2 smoke & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & plan=50; exec=50 & 100,50 & derived,ok \\
+\url{fwr_chunk_size_10x10} & historical FWR-v2 diagnostic & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & plan=1,16,2,32,4,50,8; exec=1,16,2,32,4,50,8 & 100,200 & derived,ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & main generated FWR-v2 & \url{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k}; \url{smolvla_libero} & plan=1,16,2,32,4,50,8; exec=1,16,2,32,4,50,8 & 100 & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & main generated FWR-v2 & \url{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k}; \url{smolvla_libero} & plan=50; exec=1,16,2,32,4,50,8 & 100 & ok \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & LR/WD diagnostic & \url{hfrvla_lr3e_4_wd0_b512_50k}; \url{hfrvla_lr3e_4_wd1e_4_b512_50k}; \url{hfrvla_lr3e_4_wd1e_5_b512_50k}; \url{hfrvla_lr3e_4_wd3e_4_b512_50k}; \url{hfrvla_lr5e_4_wd0_b512_50k}; \url{hfrvla_lr5e_4_wd1e_4_b512_50k}; \url{hfrvla_lr5e_4_wd1e_5_b512_50k}; \url{hfrvla_lr5e_4_wd3e_4_b512_50k} & plan=50; exec=8 & 100,50 & cached,derived \\
+\url{n50_alpha_clip_spatial_50eps} & long-chunk calibration diagnostic & \url{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k} & plan=50; exec=50 & 50 & cached,ok \\
+\end{longtable}
+\end{scriptsize}
+
+\begin{scriptsize}
+\begin{longtable}{@{}p{0.20\linewidth}p{0.10\linewidth}p{0.10\linewidth}p{0.16\linewidth}p{0.07\linewidth}p{0.12\linewidth}p{0.17\linewidth}p{0.08\linewidth}@{}}
+\caption{結果 provenance 表。此表以 sweep/policy/suite 為單位列出 checkpoint 與評估設定；所有缺漏欄位以 not recorded 標示，避免把 metadata blanks 視為 verified hyperparameters。}\label{tab:result-provenance}\\
+\toprule
+Sweep & Policy & Suite & Checkpoint & Steps & $\alpha/\delta$ & Source & Status \\
+\midrule
+\endfirsthead
+\caption[]{結果 provenance 表。此表以 sweep/policy/suite 為單位列出 checkpoint 與評估設定；所有缺漏欄位以 not recorded 標示，避免把 metadata blanks 視為 verified hyperparameters。（續）}\\
+\toprule
+Sweep & Policy & Suite & Checkpoint & Steps & $\alpha/\delta$ & Source & Status \\
+\midrule
+\endhead
+\midrule
+\multicolumn{8}{r}{續下頁}\\
+\endfoot
+\bottomrule
+\endlastfoot
+\url{action_step8_alpha_clip_sweep} & \url{hfrvla} & \url{combined} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.25/0.2; 0.25/0.3; 0.25/0.4; 0.5/0.2; 0.5/0.3; 0.5/0.4; 0.75/0.2; 0.75/0.3; 0.75/0.4; 1.0/0.2; 1.0/0.3; 1.0/0.4 & \url{outputs/action_step8_alpha_clip_sweep/results.csv} & derived \\
+\url{action_step8_alpha_clip_sweep} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.25/0.2; 0.25/0.3; 0.25/0.4; 0.5/0.2; 0.5/0.3; 0.5/0.4; 0.75/0.2; 0.75/0.3; 0.75/0.4; 1.0/0.2; 1.0/0.3; 1.0/0.4 & \url{outputs/action_step8_alpha_clip_sweep/results.csv} & imported,ok \\
+\url{action_step8_alpha_clip_sweep} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.25/0.2; 0.25/0.3; 0.25/0.4; 0.5/0.2; 0.5/0.3; 0.5/0.4; 0.75/0.2; 0.75/0.3; 0.75/0.4; 1.0/0.2; 1.0/0.3; 1.0/0.4 & \url{outputs/action_step8_alpha_clip_sweep/results.csv} & imported,ok \\
+\url{action_steps_eval_sweep} & \url{hfrvla} & \url{combined} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/action_steps_eval_sweep/results.csv} & derived \\
+\url{action_steps_eval_sweep} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/action_steps_eval_sweep/results.csv} & imported,ok \\
+\url{action_steps_eval_sweep} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/action_steps_eval_sweep/results.csv} & imported,ok \\
+\url{action_steps_eval_sweep} & \url{smolvla} & \url{combined} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/action_steps_eval_sweep/results.csv} & derived \\
+\url{action_steps_eval_sweep} & \url{smolvla} & \url{libero_object} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/action_steps_eval_sweep/results.csv} & imported,ok \\
+\url{action_steps_eval_sweep} & \url{smolvla} & \url{libero_spatial} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/action_steps_eval_sweep/results.csv} & imported,ok \\
+\url{action_steps_eval_sweep_no_resclip} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/999.0 & \url{outputs/action_steps_eval_sweep_no_resclip/results.csv} & pending \\
+\url{action_steps_eval_sweep_no_resclip} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/999.0 & \url{outputs/action_steps_eval_sweep_no_resclip/results.csv} & pending \\
+\url{async_timestep_planner_delay_eval_sweep} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/async_timestep_planner_delay_eval_sweep/results.csv} & ok \\
+\url{async_timestep_planner_delay_eval_sweep} & \url{hfrvla_disable_fast} & \url{libero_spatial} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/async_timestep_planner_delay_eval_sweep/results.csv} & ok \\
+\url{chunk_size_eval_sweep} & \url{hfrvla} & \url{combined} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/chunk_size_eval_sweep/results.csv} & derived \\
+\url{chunk_size_eval_sweep} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/chunk_size_eval_sweep/results.csv} & ok \\
+\url{chunk_size_eval_sweep} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/chunk_size_eval_sweep/results.csv} & ok \\
+\url{chunk_size_eval_sweep} & \url{smolvla} & \url{combined} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/chunk_size_eval_sweep/results.csv} & derived \\
+\url{chunk_size_eval_sweep} & \url{smolvla} & \url{libero_object} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/chunk_size_eval_sweep/results.csv} & ok \\
+\url{chunk_size_eval_sweep} & \url{smolvla} & \url{libero_spatial} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/chunk_size_eval_sweep/results.csv} & ok \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/999.0 & \url{outputs/chunk_size_eval_sweep_no_resclip/results.csv} & pending \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/999.0 & \url{outputs/chunk_size_eval_sweep_no_resclip/results.csv} & pending \\
+\url{fwr_action_steps_10x10} & \url{hfrvla} & \url{combined} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_action_steps_10x10/results.csv} & derived \\
+\url{fwr_action_steps_10x10} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_action_steps_10x10/results.csv} & ok \\
+\url{fwr_action_steps_10x10} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_action_steps_10x10/results.csv} & ok \\
+\url{fwr_chunk_plan50_exec50_eval} & \url{hfrvla} & \url{combined} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_chunk_plan50_exec50_eval/results.csv} & derived \\
+\url{fwr_chunk_plan50_exec50_eval} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_chunk_plan50_exec50_eval/results.csv} & ok \\
+\url{fwr_chunk_plan50_exec50_eval} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_chunk_plan50_exec50_eval/results.csv} & ok \\
+\url{fwr_chunk_size_10x10} & \url{hfrvla} & \url{combined} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_chunk_size_10x10/results.csv} & derived \\
+\url{fwr_chunk_size_10x10} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_chunk_size_10x10/results.csv} & ok \\
+\url{fwr_chunk_size_10x10} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_chunk_size_10x10/results.csv} & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k} & 50000 & 0.5/0.2 & \url{outputs/hfrvla_smolvla_spatial_10x10_matched_chunk_sweep_bs3/results.csv} & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{smolvla} & \url{libero_spatial} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/hfrvla_smolvla_spatial_10x10_matched_chunk_sweep_bs3/results.csv} & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k} & 50000 & 0.5/0.2 & \url{outputs/hfrvla_smolvla_spatial_10x10_plan50_exec_sweep_bs3/results.csv} & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{smolvla} & \url{libero_spatial} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/hfrvla_smolvla_spatial_10x10_plan50_exec_sweep_bs3/results.csv} & ok \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{hfrvla} & \url{combined} & \url{hfrvla_lr3e_4_wd0_b512_50k}; \url{hfrvla_lr3e_4_wd1e_4_b512_50k}; \url{hfrvla_lr3e_4_wd1e_5_b512_50k}; \url{hfrvla_lr3e_4_wd3e_4_b512_50k}; \url{hfrvla_lr5e_4_wd0_b512_50k}; \url{hfrvla_lr5e_4_wd1e_4_b512_50k}; \url{hfrvla_lr5e_4_wd1e_5_b512_50k}; \url{hfrvla_lr5e_4_wd3e_4_b512_50k} & 50000 & 0.75/0.2 & \url{outputs/hfrvla_lrwd_alpha075_clip02_eval/results.csv} & derived \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_lr3e_4_wd0_b512_50k}; \url{hfrvla_lr3e_4_wd1e_4_b512_50k}; \url{hfrvla_lr3e_4_wd1e_5_b512_50k}; \url{hfrvla_lr3e_4_wd3e_4_b512_50k}; \url{hfrvla_lr5e_4_wd0_b512_50k}; \url{hfrvla_lr5e_4_wd1e_4_b512_50k}; \url{hfrvla_lr5e_4_wd1e_5_b512_50k}; \url{hfrvla_lr5e_4_wd3e_4_b512_50k} & 50000 & 0.75/0.2 & \url{outputs/hfrvla_lrwd_alpha075_clip02_eval/results.csv} & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_lr3e_4_wd0_b512_50k}; \url{hfrvla_lr3e_4_wd1e_4_b512_50k}; \url{hfrvla_lr3e_4_wd1e_5_b512_50k}; \url{hfrvla_lr3e_4_wd3e_4_b512_50k}; \url{hfrvla_lr5e_4_wd0_b512_50k}; \url{hfrvla_lr5e_4_wd1e_4_b512_50k}; \url{hfrvla_lr5e_4_wd1e_5_b512_50k}; \url{hfrvla_lr5e_4_wd3e_4_b512_50k} & 50000 & 0.75/0.2 & \url{outputs/hfrvla_lrwd_alpha075_clip02_eval/results.csv} & cached \\
+\url{n50_alpha_clip_spatial_50eps} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k} & 50000 & 0.25/0.05; 0.25/0.1; 0.25/0.15; 0.25/0.18; 0.25/0.2; 0.25/0.22; 0.25/0.25; 0.25/0.3; 0.25/999.0; 0.5/0.05; 0.5/0.1; 0.5/0.15; 0.5/0.18; 0.5/0.2; 0.5/0.22; 0.5/0.25; 0.5/0.3; 0.5/999.0; 0.75/0.05; 0.75/0.1; 0.75/0.15; 0.75/0.18; 0.75/0.2; 0.75/0.22; 0.75/0.25; 0.75/0.3; 0.75/999.0; 1.0/0.05; 1.0/0.1; 1.0/0.15; 1.0/0.18; 1.0/0.2; 1.0/0.22; 1.0/0.25; 1.0/0.3; 1.0/999.0 & \url{outputs/eval_hfrvla_fwr_chunk_generated_seq2_b1024p3_50k_n50_alpha_clip_spatial_50eps_b3/results.csv} & cached,ok \\
+\end{longtable}
+\end{scriptsize}

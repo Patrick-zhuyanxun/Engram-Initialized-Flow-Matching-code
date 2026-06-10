@@ -426,7 +426,6 @@ def build_eval_command(spec: EvalSpec, eval_bin: Path, output_dir: Path) -> list
     ]
     if spec.policy == "hfrvla" and spec.alpha is not None:
         cmd.append(f"--policy.fast_residual_alpha={spec.alpha}")
-        cmd.append(f"--policy.a2c2_alpha={spec.alpha}")
     if spec.policy == "hfrvla" and spec.eval_delta_max is not None:
         cmd.append(f"--policy.delta_max={spec.eval_delta_max}")
     if spec.policy == "hfrvla" and spec.eval_safety_joint_velocity_limit is not None:

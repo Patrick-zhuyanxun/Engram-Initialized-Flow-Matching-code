@@ -41,6 +41,16 @@ def _max_episodes_rendered() -> int:
     return value
 
 
+def _to_jsonable(value):
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu().tolist()
+    if isinstance(value, dict):
+        return {str(k): _to_jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_jsonable(v) for v in value]
+    return value
+
+
 @parser.wrap()
 def eval_main(cfg: EvalPipelineConfig) -> None:
     logging.info(pformat(asdict(cfg)))
@@ -109,6 +119,9 @@ def eval_main(cfg: EvalPipelineConfig) -> None:
             for task_group, task_group_info in info.items():
                 print(f"\nAggregated Metrics for {task_group}:")
                 print(task_group_info)
+
+        if hasattr(policy, "get_inference_debug_stats"):
+            info["policy_inference_debug"] = _to_jsonable(policy.get_inference_debug_stats())
 
         with (output_dir / "eval_info.json").open("w") as f:
             json.dump(info, f, indent=2)

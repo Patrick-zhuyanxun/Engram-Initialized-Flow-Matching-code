@@ -1,0 +1,597 @@
+\begin{scriptsize}
+\begin{longtable}{@{}p{0.25\linewidth}p{0.18\linewidth}p{0.14\linewidth}p{0.16\linewidth}p{0.10\linewidth}r@{}}
+\caption{評估註冊表實驗群組總覽。Rows 代表 master registry 中該 sweep 的列數；status 保留 pending/cached/derived 等 provenance。}\label{tab:registry-inventory}\\
+\toprule
+Sweep & Type & Policies & Suites & Status & Rows \\
+\midrule
+\endfirsthead
+\caption[]{評估註冊表實驗群組總覽。Rows 代表 master registry 中該 sweep 的列數；status 保留 pending/cached/derived 等 provenance。（續）}\\
+\toprule
+Sweep & Type & Policies & Suites & Status & Rows \\
+\midrule
+\endhead
+\midrule
+\multicolumn{6}{r}{續下頁}\\
+\endfoot
+\bottomrule
+\endlastfoot
+\url{action_step8_alpha_clip_sweep} & alpha\_clip\_sweep & hfrvla & combined,libero\_object,libero\_spatial & derived,imported,ok & 36 \\
+\url{action_steps_eval_sweep} & execution\_replan\_sweep & hfrvla,smolvla & combined,libero\_object,libero\_spatial & derived,imported,ok & 30 \\
+\url{action_steps_eval_sweep_no_resclip} & execution\_replan\_sweep & hfrvla & libero\_object,libero\_spatial & pending & 10 \\
+\url{async_timestep_planner_delay_eval_sweep} & planner\_delay\_sweep & hfrvla,hfrvla\_disable\_fast & libero\_spatial & ok & 10 \\
+\url{chunk_size_eval_sweep} & matched\_planning\_execution\_sweep & hfrvla,smolvla & combined,libero\_object,libero\_spatial & derived,ok & 36 \\
+\url{chunk_size_eval_sweep_no_resclip} & matched\_planning\_execution\_sweep & hfrvla & libero\_object,libero\_spatial & pending & 12 \\
+\url{fwr_action_steps_10x10} & execution\_replan\_sweep & hfrvla & combined,libero\_object,libero\_spatial & derived,ok & 21 \\
+\url{fwr_chunk_plan50_exec50_eval} & matched\_planning\_execution\_sweep & hfrvla & combined,libero\_object,libero\_spatial & derived,ok & 3 \\
+\url{fwr_chunk_size_10x10} & matched\_planning\_execution\_sweep & hfrvla & combined,libero\_object,libero\_spatial & derived,ok & 21 \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & matched\_planning\_execution\_sweep & hfrvla,smolvla & libero\_spatial & ok & 14 \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & execution\_replan\_sweep & hfrvla,smolvla & libero\_spatial & ok & 14 \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & learning\_rate\_weight\_decay\_sweep & hfrvla & combined,libero\_object,libero\_spatial & cached,derived & 24 \\
+\url{n50_alpha_clip_spatial_50eps} & alpha\_clip\_sweep & hfrvla & libero\_spatial & cached,ok & 36 \\
+\end{longtable}
+\end{scriptsize}
+
+\begin{scriptsize}
+\begin{longtable}{@{}p{0.24\linewidth}p{0.17\linewidth}p{0.18\linewidth}p{0.18\linewidth}p{0.09\linewidth}p{0.08\linewidth}@{}}
+\caption{Checkpoint and protocol matrix. Tier 欄位定義本文如何使用該 sweep：main、diagnostic、historical 或 pending。}\label{tab:checkpoint-protocol-matrix}\\
+\toprule
+Sweep & Tier & Checkpoint/profile & Protocol & Episodes & Status \\
+\midrule
+\endfirsthead
+\caption[]{Checkpoint and protocol matrix. Tier 欄位定義本文如何使用該 sweep：main、diagnostic、historical 或 pending。（續）}\\
+\toprule
+Sweep & Tier & Checkpoint/profile & Protocol & Episodes & Status \\
+\midrule
+\endhead
+\midrule
+\multicolumn{6}{r}{續下頁}\\
+\endfoot
+\bottomrule
+\endlastfoot
+\url{action_step8_alpha_clip_sweep} & 30k calibration diagnostic & \url{hfrvla_a2c2_wrist_seq2_30k} & plan=50; exec=8 & 100,50 & derived,imported,ok \\
+\url{action_steps_eval_sweep} & historical 30k diagnostic & \url{hfrvla_a2c2_wrist_seq2_30k}; \url{smolvla_libero} & plan=50; exec=16,2,32,4,8 & 100,50 & derived,imported,ok \\
+\url{action_steps_eval_sweep_no_resclip} & pending control & \url{hfrvla_a2c2_wrist_seq2_30k} & plan=50; exec=16,2,32,4,8 & pending/not recorded & pending \\
+\url{async_timestep_planner_delay_eval_sweep} & async diagnostic & \url{hfrvla_a2c2_wrist_seq2_30k} & plan=50; exec=16; delay=0,1,2,3,4 & 100 & ok \\
+\url{chunk_size_eval_sweep} & historical 30k diagnostic & \url{hfrvla_a2c2_wrist_seq2_30k}; \url{smolvla_libero} & plan=16,2,32,4,50,8; exec=16,2,32,4,50,8 & 100,50 & derived,ok \\
+\url{chunk_size_eval_sweep_no_resclip} & pending control & \url{hfrvla_a2c2_wrist_seq2_30k} & plan=16,2,32,4,50,8; exec=16,2,32,4,50,8 & pending/not recorded & pending \\
+\url{fwr_action_steps_10x10} & historical FWR-v2 diagnostic & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & plan=50; exec=1,16,2,32,4,50,8 & 100,200 & derived,ok \\
+\url{fwr_chunk_plan50_exec50_eval} & historical FWR-v2 smoke & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & plan=50; exec=50 & 100,50 & derived,ok \\
+\url{fwr_chunk_size_10x10} & historical FWR-v2 diagnostic & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & plan=1,16,2,32,4,50,8; exec=1,16,2,32,4,50,8 & 100,200 & derived,ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & main generated FWR-v2 & \url{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k}; \url{smolvla_libero} & plan=1,16,2,32,4,50,8; exec=1,16,2,32,4,50,8 & 100 & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & main generated FWR-v2 & \url{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k}; \url{smolvla_libero} & plan=50; exec=1,16,2,32,4,50,8 & 100 & ok \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & LR/WD diagnostic & \url{hfrvla_lr3e_4_wd0_b512_50k}; \url{hfrvla_lr3e_4_wd1e_4_b512_50k}; \url{hfrvla_lr3e_4_wd1e_5_b512_50k}; \url{hfrvla_lr3e_4_wd3e_4_b512_50k}; \url{hfrvla_lr5e_4_wd0_b512_50k}; \url{hfrvla_lr5e_4_wd1e_4_b512_50k}; \url{hfrvla_lr5e_4_wd1e_5_b512_50k}; \url{hfrvla_lr5e_4_wd3e_4_b512_50k} & plan=50; exec=8 & 100,50 & cached,derived \\
+\url{n50_alpha_clip_spatial_50eps} & long-chunk calibration diagnostic & \url{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k} & plan=50; exec=50 & 50 & cached,ok \\
+\end{longtable}
+\end{scriptsize}
+
+\begin{scriptsize}
+\begin{longtable}{@{}p{0.20\linewidth}p{0.10\linewidth}p{0.10\linewidth}p{0.16\linewidth}p{0.07\linewidth}p{0.12\linewidth}p{0.17\linewidth}p{0.08\linewidth}@{}}
+\caption{結果 provenance 表。此表以 sweep/policy/suite 為單位列出 checkpoint 與評估設定；所有缺漏欄位以 not recorded 標示，避免把 metadata blanks 視為 verified hyperparameters。}\label{tab:result-provenance}\\
+\toprule
+Sweep & Policy & Suite & Checkpoint & Steps & $\alpha/\delta$ & Source & Status \\
+\midrule
+\endfirsthead
+\caption[]{結果 provenance 表。此表以 sweep/policy/suite 為單位列出 checkpoint 與評估設定；所有缺漏欄位以 not recorded 標示，避免把 metadata blanks 視為 verified hyperparameters。（續）}\\
+\toprule
+Sweep & Policy & Suite & Checkpoint & Steps & $\alpha/\delta$ & Source & Status \\
+\midrule
+\endhead
+\midrule
+\multicolumn{8}{r}{續下頁}\\
+\endfoot
+\bottomrule
+\endlastfoot
+\url{action_step8_alpha_clip_sweep} & \url{hfrvla} & \url{combined} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.25/0.2; 0.25/0.3; 0.25/0.4; 0.5/0.2; 0.5/0.3; 0.5/0.4; 0.75/0.2; 0.75/0.3; 0.75/0.4; 1.0/0.2; 1.0/0.3; 1.0/0.4 & \url{outputs/action_step8_alpha_clip_sweep/results.csv} & derived \\
+\url{action_step8_alpha_clip_sweep} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.25/0.2; 0.25/0.3; 0.25/0.4; 0.5/0.2; 0.5/0.3; 0.5/0.4; 0.75/0.2; 0.75/0.3; 0.75/0.4; 1.0/0.2; 1.0/0.3; 1.0/0.4 & \url{outputs/action_step8_alpha_clip_sweep/results.csv} & imported,ok \\
+\url{action_step8_alpha_clip_sweep} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.25/0.2; 0.25/0.3; 0.25/0.4; 0.5/0.2; 0.5/0.3; 0.5/0.4; 0.75/0.2; 0.75/0.3; 0.75/0.4; 1.0/0.2; 1.0/0.3; 1.0/0.4 & \url{outputs/action_step8_alpha_clip_sweep/results.csv} & imported,ok \\
+\url{action_steps_eval_sweep} & \url{hfrvla} & \url{combined} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/action_steps_eval_sweep/results.csv} & derived \\
+\url{action_steps_eval_sweep} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/action_steps_eval_sweep/results.csv} & imported,ok \\
+\url{action_steps_eval_sweep} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/action_steps_eval_sweep/results.csv} & imported,ok \\
+\url{action_steps_eval_sweep} & \url{smolvla} & \url{combined} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/action_steps_eval_sweep/results.csv} & derived \\
+\url{action_steps_eval_sweep} & \url{smolvla} & \url{libero_object} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/action_steps_eval_sweep/results.csv} & imported,ok \\
+\url{action_steps_eval_sweep} & \url{smolvla} & \url{libero_spatial} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/action_steps_eval_sweep/results.csv} & imported,ok \\
+\url{action_steps_eval_sweep_no_resclip} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/999.0 & \url{outputs/action_steps_eval_sweep_no_resclip/results.csv} & pending \\
+\url{action_steps_eval_sweep_no_resclip} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/999.0 & \url{outputs/action_steps_eval_sweep_no_resclip/results.csv} & pending \\
+\url{async_timestep_planner_delay_eval_sweep} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/async_timestep_planner_delay_eval_sweep/results.csv} & ok \\
+\url{async_timestep_planner_delay_eval_sweep} & \url{hfrvla_disable_fast} & \url{libero_spatial} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/async_timestep_planner_delay_eval_sweep/results.csv} & ok \\
+\url{chunk_size_eval_sweep} & \url{hfrvla} & \url{combined} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/chunk_size_eval_sweep/results.csv} & derived \\
+\url{chunk_size_eval_sweep} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/chunk_size_eval_sweep/results.csv} & ok \\
+\url{chunk_size_eval_sweep} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/not recorded & \url{outputs/chunk_size_eval_sweep/results.csv} & ok \\
+\url{chunk_size_eval_sweep} & \url{smolvla} & \url{combined} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/chunk_size_eval_sweep/results.csv} & derived \\
+\url{chunk_size_eval_sweep} & \url{smolvla} & \url{libero_object} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/chunk_size_eval_sweep/results.csv} & ok \\
+\url{chunk_size_eval_sweep} & \url{smolvla} & \url{libero_spatial} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/chunk_size_eval_sweep/results.csv} & ok \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/999.0 & \url{outputs/chunk_size_eval_sweep_no_resclip/results.csv} & pending \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_a2c2_wrist_seq2_30k} & 30000 & 0.5/999.0 & \url{outputs/chunk_size_eval_sweep_no_resclip/results.csv} & pending \\
+\url{fwr_action_steps_10x10} & \url{hfrvla} & \url{combined} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_action_steps_10x10/results.csv} & derived \\
+\url{fwr_action_steps_10x10} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_action_steps_10x10/results.csv} & ok \\
+\url{fwr_action_steps_10x10} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_action_steps_10x10/results.csv} & ok \\
+\url{fwr_chunk_plan50_exec50_eval} & \url{hfrvla} & \url{combined} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_chunk_plan50_exec50_eval/results.csv} & derived \\
+\url{fwr_chunk_plan50_exec50_eval} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_chunk_plan50_exec50_eval/results.csv} & ok \\
+\url{fwr_chunk_plan50_exec50_eval} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_chunk_plan50_exec50_eval/results.csv} & ok \\
+\url{fwr_chunk_size_10x10} & \url{hfrvla} & \url{combined} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_chunk_size_10x10/results.csv} & derived \\
+\url{fwr_chunk_size_10x10} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_chunk_size_10x10/results.csv} & ok \\
+\url{fwr_chunk_size_10x10} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_fwr_chunk_seq2_b512_50k_packaged_cuda} & 50000 & 0.5/0.2 & \url{outputs/fwr_chunk_size_10x10/results.csv} & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k} & 50000 & 0.5/0.2 & \url{outputs/hfrvla_smolvla_spatial_10x10_matched_chunk_sweep_bs3/results.csv} & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{smolvla} & \url{libero_spatial} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/hfrvla_smolvla_spatial_10x10_matched_chunk_sweep_bs3/results.csv} & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k} & 50000 & 0.5/0.2 & \url{outputs/hfrvla_smolvla_spatial_10x10_plan50_exec_sweep_bs3/results.csv} & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{smolvla} & \url{libero_spatial} & \url{smolvla_libero} & not recorded & \emph{not recorded} & \url{outputs/hfrvla_smolvla_spatial_10x10_plan50_exec_sweep_bs3/results.csv} & ok \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{hfrvla} & \url{combined} & \url{hfrvla_lr3e_4_wd0_b512_50k}; \url{hfrvla_lr3e_4_wd1e_4_b512_50k}; \url{hfrvla_lr3e_4_wd1e_5_b512_50k}; \url{hfrvla_lr3e_4_wd3e_4_b512_50k}; \url{hfrvla_lr5e_4_wd0_b512_50k}; \url{hfrvla_lr5e_4_wd1e_4_b512_50k}; \url{hfrvla_lr5e_4_wd1e_5_b512_50k}; \url{hfrvla_lr5e_4_wd3e_4_b512_50k} & 50000 & 0.75/0.2 & \url{outputs/hfrvla_lrwd_alpha075_clip02_eval/results.csv} & derived \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{hfrvla} & \url{libero_object} & \url{hfrvla_lr3e_4_wd0_b512_50k}; \url{hfrvla_lr3e_4_wd1e_4_b512_50k}; \url{hfrvla_lr3e_4_wd1e_5_b512_50k}; \url{hfrvla_lr3e_4_wd3e_4_b512_50k}; \url{hfrvla_lr5e_4_wd0_b512_50k}; \url{hfrvla_lr5e_4_wd1e_4_b512_50k}; \url{hfrvla_lr5e_4_wd1e_5_b512_50k}; \url{hfrvla_lr5e_4_wd3e_4_b512_50k} & 50000 & 0.75/0.2 & \url{outputs/hfrvla_lrwd_alpha075_clip02_eval/results.csv} & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_lr3e_4_wd0_b512_50k}; \url{hfrvla_lr3e_4_wd1e_4_b512_50k}; \url{hfrvla_lr3e_4_wd1e_5_b512_50k}; \url{hfrvla_lr3e_4_wd3e_4_b512_50k}; \url{hfrvla_lr5e_4_wd0_b512_50k}; \url{hfrvla_lr5e_4_wd1e_4_b512_50k}; \url{hfrvla_lr5e_4_wd1e_5_b512_50k}; \url{hfrvla_lr5e_4_wd3e_4_b512_50k} & 50000 & 0.75/0.2 & \url{outputs/hfrvla_lrwd_alpha075_clip02_eval/results.csv} & cached \\
+\url{n50_alpha_clip_spatial_50eps} & \url{hfrvla} & \url{libero_spatial} & \url{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k} & 50000 & 0.25/0.05; 0.25/0.1; 0.25/0.15; 0.25/0.18; 0.25/0.2; 0.25/0.22; 0.25/0.25; 0.25/0.3; 0.25/999.0; 0.5/0.05; 0.5/0.1; 0.5/0.15; 0.5/0.18; 0.5/0.2; 0.5/0.22; 0.5/0.25; 0.5/0.3; 0.5/999.0; 0.75/0.05; 0.75/0.1; 0.75/0.15; 0.75/0.18; 0.75/0.2; 0.75/0.22; 0.75/0.25; 0.75/0.3; 0.75/999.0; 1.0/0.05; 1.0/0.1; 1.0/0.15; 1.0/0.18; 1.0/0.2; 1.0/0.22; 1.0/0.25; 1.0/0.3; 1.0/999.0 & \url{outputs/eval_hfrvla_fwr_chunk_generated_seq2_b1024p3_50k_n50_alpha_clip_spatial_50eps_b3/results.csv} & cached,ok \\
+\end{longtable}
+\end{scriptsize}
+
+\begin{table}[htbp]
+\centering
+\caption{Generated checkpoint LIBERO-Spatial 10x10 synchronous plan-50 execution sweep exact values.}
+\label{tab:thesis-generated-plan50}
+\begin{tabular}{@{}rrr@{}}
+\toprule
+$K$ & SmolVLA success & HFRVLA success \\
+\midrule
+1 & 79.0\% & 75.0\% \\
+2 & 72.0\% & 79.0\% \\
+4 & 65.0\% & 80.0\% \\
+8 & 60.0\% & 71.0\% \\
+16 & 57.0\% & 75.0\% \\
+32 & 50.0\% & 59.0\% \\
+50 & 40.0\% & 53.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Generated checkpoint LIBERO-Spatial 10x10 synchronous matched chunk sweep exact values.}
+\label{tab:thesis-generated-matched}
+\begin{tabular}{@{}rrr@{}}
+\toprule
+$K$ & SmolVLA success & HFRVLA success \\
+\midrule
+1 & 77.0\% & 73.0\% \\
+2 & 77.0\% & 71.0\% \\
+4 & 65.0\% & 73.0\% \\
+8 & 62.0\% & 65.0\% \\
+16 & 54.0\% & 60.0\% \\
+32 & 51.0\% & 60.0\% \\
+50 & 40.0\% & 53.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Async-timestep planner-delay sweep exact values. 每列為 LIBERO-Spatial 100 episodes，plan=50、execution/replan=16、async request interval=8。}
+\label{tab:thesis-async-delay}
+\begin{tabular}{@{}rrr@{}}
+\toprule
+Delay $d$ & Disable-fast success & HFRVLA success \\
+\midrule
+0 & 68.0\% & 64.0\% \\
+1 & 64.0\% & 68.0\% \\
+2 & 62.0\% & 72.0\% \\
+3 & 61.0\% & 68.0\% \\
+4 & 56.0\% & 66.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{small}
+\begin{longtable}{@{}rrrrr@{}}
+\caption{Plan=50, exec=8 的 Spatial alpha/clip calibration。每列為 50 episodes。}\label{tab:thesis-alpha-clip-exec8}\\
+\toprule
+$\alpha$ & $\delta_{\max}$ & Plan & Exec & Success \\
+\midrule
+\endfirsthead
+\caption[]{Plan=50, exec=8 的 Spatial alpha/clip calibration。每列為 50 episodes。（續）}\\
+\toprule
+$\alpha$ & $\delta_{\max}$ & Plan & Exec & Success \\
+\midrule
+\endhead
+\midrule
+\multicolumn{5}{r}{續下頁}\\
+\endfoot
+\bottomrule
+\endlastfoot
+0.25 & 0.2 & 50 & 8 & 25/50 (50.0\%) \\
+0.25 & 0.3 & 50 & 8 & 37/50 (74.0\%) \\
+0.25 & 0.4 & 50 & 8 & 32/50 (64.0\%) \\
+0.5 & 0.2 & 50 & 8 & 34/50 (68.0\%) \\
+0.5 & 0.3 & 50 & 8 & 33/50 (66.0\%) \\
+0.5 & 0.4 & 50 & 8 & 35/50 (70.0\%) \\
+0.75 & 0.2 & 50 & 8 & 41/50 (82.0\%) \\
+0.75 & 0.3 & 50 & 8 & 38/50 (76.0\%) \\
+0.75 & 0.4 & 50 & 8 & 37/50 (74.0\%) \\
+1.0 & 0.2 & 50 & 8 & 38/50 (76.0\%) \\
+1.0 & 0.3 & 50 & 8 & 34/50 (68.0\%) \\
+1.0 & 0.4 & 50 & 8 & 36/50 (72.0\%) \\
+\end{longtable}
+\end{small}
+
+\begin{small}
+\begin{longtable}{@{}rrrrr@{}}
+\caption{Plan=exec=replan=50 的 Spatial alpha/clip long-chunk calibration。每列為 50 episodes。}\label{tab:thesis-alpha-clip-n50}\\
+\toprule
+$\alpha$ & $\delta_{\max}$ & Plan & Exec & Success \\
+\midrule
+\endfirsthead
+\caption[]{Plan=exec=replan=50 的 Spatial alpha/clip long-chunk calibration。每列為 50 episodes。（續）}\\
+\toprule
+$\alpha$ & $\delta_{\max}$ & Plan & Exec & Success \\
+\midrule
+\endhead
+\midrule
+\multicolumn{5}{r}{續下頁}\\
+\endfoot
+\bottomrule
+\endlastfoot
+0.25 & 0.05 & 50 & 50 & 23/50 (46.0\%) \\
+0.25 & 0.1 & 50 & 50 & 23/50 (46.0\%) \\
+0.25 & 0.15 & 50 & 50 & 24/50 (48.0\%) \\
+0.25 & 0.18 & 50 & 50 & 24/50 (48.0\%) \\
+0.25 & 0.2 & 50 & 50 & 27/50 (54.0\%) \\
+0.25 & 0.22 & 50 & 50 & 25/50 (50.0\%) \\
+0.25 & 0.25 & 50 & 50 & 21/50 (42.0\%) \\
+0.25 & 0.3 & 50 & 50 & 26/50 (52.0\%) \\
+0.25 & 999.0 & 50 & 50 & 22/50 (44.0\%) \\
+0.5 & 0.05 & 50 & 50 & 27/50 (54.0\%) \\
+0.5 & 0.1 & 50 & 50 & 23/50 (46.0\%) \\
+0.5 & 0.15 & 50 & 50 & 22/50 (44.0\%) \\
+0.5 & 0.18 & 50 & 50 & 23/50 (46.0\%) \\
+0.5 & 0.2 & 50 & 50 & 28/50 (56.0\%) \\
+0.5 & 0.22 & 50 & 50 & 26/50 (52.0\%) \\
+0.5 & 0.25 & 50 & 50 & 25/50 (50.0\%) \\
+0.5 & 0.3 & 50 & 50 & 22/50 (44.0\%) \\
+0.5 & 999.0 & 50 & 50 & 8/50 (16.0\%) \\
+0.75 & 0.05 & 50 & 50 & 24/50 (48.0\%) \\
+0.75 & 0.1 & 50 & 50 & 24/50 (48.0\%) \\
+0.75 & 0.15 & 50 & 50 & 23/50 (46.0\%) \\
+0.75 & 0.18 & 50 & 50 & 23/50 (46.0\%) \\
+0.75 & 0.2 & 50 & 50 & 26/50 (52.0\%) \\
+0.75 & 0.22 & 50 & 50 & 26/50 (52.0\%) \\
+0.75 & 0.25 & 50 & 50 & 20/50 (40.0\%) \\
+0.75 & 0.3 & 50 & 50 & 18/50 (36.0\%) \\
+0.75 & 999.0 & 50 & 50 & 2/50 (4.0\%) \\
+1.0 & 0.05 & 50 & 50 & 25/50 (50.0\%) \\
+1.0 & 0.1 & 50 & 50 & 28/50 (56.0\%) \\
+1.0 & 0.15 & 50 & 50 & 24/50 (48.0\%) \\
+1.0 & 0.18 & 50 & 50 & 20/50 (40.0\%) \\
+1.0 & 0.2 & 50 & 50 & 23/50 (46.0\%) \\
+1.0 & 0.22 & 50 & 50 & 20/50 (40.0\%) \\
+1.0 & 0.25 & 50 & 50 & 21/50 (42.0\%) \\
+1.0 & 0.3 & 50 & 50 & 19/50 (38.0\%) \\
+1.0 & 999.0 & 50 & 50 & 1/50 (2.0\%) \\
+\end{longtable}
+\end{small}
+
+\begin{small}
+\begin{longtable}{@{}p{0.16\linewidth}p{0.16\linewidth}p{0.17\linewidth}p{0.20\linewidth}p{0.17\linewidth}@{}}
+\caption{LR/WD diagnostic exact rows for plan=50, exec=8, $\alpha=0.75,\delta_{\max}=0.2$. 這些 rows 用於 checkpoint selection，不作為主結果。}\label{tab:thesis-lrwd-diagnostic}\\
+\toprule
+LR & Weight decay & Suite & Checkpoint/profile & Success \\
+\midrule
+\endfirsthead
+\caption[]{LR/WD diagnostic exact rows for plan=50, exec=8, $\alpha=0.75,\delta_{\max}=0.2$. 這些 rows 用於 checkpoint selection，不作為主結果。（續）}\\
+\toprule
+LR & Weight decay & Suite & Checkpoint/profile & Success \\
+\midrule
+\endhead
+\midrule
+\multicolumn{5}{r}{續下頁}\\
+\endfoot
+\bottomrule
+\endlastfoot
+3e-4 & 0 & combined & \url{hfrvla_lr3e_4_wd0_b512_50k} & 85/100 (85.0\%) \\
+3e-4 & 0 & libero\_object & \url{hfrvla_lr3e_4_wd0_b512_50k} & 49/50 (98.0\%) \\
+3e-4 & 0 & libero\_spatial & \url{hfrvla_lr3e_4_wd0_b512_50k} & 36/50 (72.0\%) \\
+3e-4 & 1e-5 & combined & \url{hfrvla_lr3e_4_wd1e_5_b512_50k} & 85/100 (85.0\%) \\
+3e-4 & 1e-5 & libero\_object & \url{hfrvla_lr3e_4_wd1e_5_b512_50k} & 49/50 (98.0\%) \\
+3e-4 & 1e-5 & libero\_spatial & \url{hfrvla_lr3e_4_wd1e_5_b512_50k} & 36/50 (72.0\%) \\
+3e-4 & 1e-4 & combined & \url{hfrvla_lr3e_4_wd1e_4_b512_50k} & 84/100 (84.0\%) \\
+3e-4 & 1e-4 & libero\_object & \url{hfrvla_lr3e_4_wd1e_4_b512_50k} & 48/50 (96.0\%) \\
+3e-4 & 1e-4 & libero\_spatial & \url{hfrvla_lr3e_4_wd1e_4_b512_50k} & 36/50 (72.0\%) \\
+3e-4 & 3e-4 & combined & \url{hfrvla_lr3e_4_wd3e_4_b512_50k} & 81/100 (81.0\%) \\
+3e-4 & 3e-4 & libero\_object & \url{hfrvla_lr3e_4_wd3e_4_b512_50k} & 44/50 (88.0\%) \\
+3e-4 & 3e-4 & libero\_spatial & \url{hfrvla_lr3e_4_wd3e_4_b512_50k} & 37/50 (74.0\%) \\
+5e-4 & 0 & combined & \url{hfrvla_lr5e_4_wd0_b512_50k} & 83/100 (83.0\%) \\
+5e-4 & 0 & libero\_object & \url{hfrvla_lr5e_4_wd0_b512_50k} & 49/50 (98.0\%) \\
+5e-4 & 0 & libero\_spatial & \url{hfrvla_lr5e_4_wd0_b512_50k} & 34/50 (68.0\%) \\
+5e-4 & 1e-5 & combined & \url{hfrvla_lr5e_4_wd1e_5_b512_50k} & 83/100 (83.0\%) \\
+5e-4 & 1e-5 & libero\_object & \url{hfrvla_lr5e_4_wd1e_5_b512_50k} & 49/50 (98.0\%) \\
+5e-4 & 1e-5 & libero\_spatial & \url{hfrvla_lr5e_4_wd1e_5_b512_50k} & 34/50 (68.0\%) \\
+5e-4 & 1e-4 & combined & \url{hfrvla_lr5e_4_wd1e_4_b512_50k} & 82/100 (82.0\%) \\
+5e-4 & 1e-4 & libero\_object & \url{hfrvla_lr5e_4_wd1e_4_b512_50k} & 49/50 (98.0\%) \\
+5e-4 & 1e-4 & libero\_spatial & \url{hfrvla_lr5e_4_wd1e_4_b512_50k} & 33/50 (66.0\%) \\
+5e-4 & 3e-4 & combined & \url{hfrvla_lr5e_4_wd3e_4_b512_50k} & 70/100 (70.0\%) \\
+5e-4 & 3e-4 & libero\_object & \url{hfrvla_lr5e_4_wd3e_4_b512_50k} & 48/50 (96.0\%) \\
+5e-4 & 3e-4 & libero\_spatial & \url{hfrvla_lr5e_4_wd3e_4_b512_50k} & 22/50 (44.0\%) \\
+\end{longtable}
+\end{small}
+
+\begin{tiny}
+\begin{longtable}{@{}p{0.18\linewidth}p{0.10\linewidth}p{0.10\linewidth}rrrrp{0.10\linewidth}p{0.08\linewidth}p{0.08\linewidth}p{0.11\linewidth}p{0.07\linewidth}@{}}
+\caption{完整評估註冊表列。此表保留所有有 success 值或 pending 狀態的 rows，用於追溯主文與附錄中的所有實驗數字。}\label{tab:full-eval-registry}\\
+\toprule
+Sweep & Suite & Policy & Plan & Exec & Delay & $\alpha/\delta$ & LR & WD & Success & Status \\
+\midrule
+\endfirsthead
+\caption[]{完整評估註冊表列。此表保留所有有 success 值或 pending 狀態的 rows，用於追溯主文與附錄中的所有實驗數字。（續）}\\
+\toprule
+Sweep & Suite & Policy & Plan & Exec & Delay & $\alpha/\delta$ & LR & WD & Success & Status \\
+\midrule
+\endhead
+\midrule
+\multicolumn{11}{r}{續下頁}\\
+\endfoot
+\bottomrule
+\endlastfoot
+\url{action_step8_alpha_clip_sweep} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.25/0.2 & 3e-4 & 1e-4 & 69/100 (69.0\%) & derived \\
+\url{action_step8_alpha_clip_sweep} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.25/0.3 & 3e-4 & 1e-4 & 81/100 (81.0\%) & derived \\
+\url{action_step8_alpha_clip_sweep} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.25/0.4 & 3e-4 & 1e-4 & 76/100 (76.0\%) & derived \\
+\url{action_step8_alpha_clip_sweep} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/0.2 & 3e-4 & 1e-4 & 81/100 (81.0\%) & derived \\
+\url{action_step8_alpha_clip_sweep} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/0.3 & 3e-4 & 1e-4 & 75/100 (75.0\%) & derived \\
+\url{action_step8_alpha_clip_sweep} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/0.4 & 3e-4 & 1e-4 & 80/100 (80.0\%) & derived \\
+\url{action_step8_alpha_clip_sweep} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 3e-4 & 1e-4 & 88/100 (88.0\%) & derived \\
+\url{action_step8_alpha_clip_sweep} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.3 & 3e-4 & 1e-4 & 80/100 (80.0\%) & derived \\
+\url{action_step8_alpha_clip_sweep} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.4 & 3e-4 & 1e-4 & 81/100 (81.0\%) & derived \\
+\url{action_step8_alpha_clip_sweep} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 1.0/0.2 & 3e-4 & 1e-4 & 82/100 (82.0\%) & derived \\
+\url{action_step8_alpha_clip_sweep} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 1.0/0.3 & 3e-4 & 1e-4 & 74/100 (74.0\%) & derived \\
+\url{action_step8_alpha_clip_sweep} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 1.0/0.4 & 3e-4 & 1e-4 & 65/100 (65.0\%) & derived \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.25/0.2 & 3e-4 & 1e-4 & 44/50 (88.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.25/0.3 & 3e-4 & 1e-4 & 44/50 (88.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.25/0.4 & 3e-4 & 1e-4 & 44/50 (88.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/0.2 & 3e-4 & 1e-4 & 47/50 (94.0\%) & imported \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/0.3 & 3e-4 & 1e-4 & 42/50 (84.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/0.4 & 3e-4 & 1e-4 & 45/50 (90.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 3e-4 & 1e-4 & 47/50 (94.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.3 & 3e-4 & 1e-4 & 42/50 (84.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.4 & 3e-4 & 1e-4 & 44/50 (88.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 1.0/0.2 & 3e-4 & 1e-4 & 44/50 (88.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 1.0/0.3 & 3e-4 & 1e-4 & 40/50 (80.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 1.0/0.4 & 3e-4 & 1e-4 & 29/50 (58.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.25/0.2 & 3e-4 & 1e-4 & 25/50 (50.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.25/0.3 & 3e-4 & 1e-4 & 37/50 (74.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.25/0.4 & 3e-4 & 1e-4 & 32/50 (64.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/0.2 & 3e-4 & 1e-4 & 34/50 (68.0\%) & imported \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/0.3 & 3e-4 & 1e-4 & 33/50 (66.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/0.4 & 3e-4 & 1e-4 & 35/50 (70.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 3e-4 & 1e-4 & 41/50 (82.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.3 & 3e-4 & 1e-4 & 38/50 (76.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.4 & 3e-4 & 1e-4 & 37/50 (74.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 1.0/0.2 & 3e-4 & 1e-4 & 38/50 (76.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 1.0/0.3 & 3e-4 & 1e-4 & 34/50 (68.0\%) & ok \\
+\url{action_step8_alpha_clip_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 1.0/0.4 & 3e-4 & 1e-4 & 36/50 (72.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{combined} & \url{hfrvla} & 50 & 2 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 85/100 (85.0\%) & derived \\
+\url{action_steps_eval_sweep} & \url{combined} & \url{hfrvla} & 50 & 4 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 83/100 (83.0\%) & derived \\
+\url{action_steps_eval_sweep} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 81/100 (81.0\%) & derived \\
+\url{action_steps_eval_sweep} & \url{combined} & \url{hfrvla} & 50 & 16 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 74/100 (74.0\%) & derived \\
+\url{action_steps_eval_sweep} & \url{combined} & \url{hfrvla} & 50 & 32 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 71/100 (71.0\%) & derived \\
+\url{action_steps_eval_sweep} & \url{combined} & \url{smolvla} & 50 & 2 & not recorded & \emph{not recorded} & not recorded & not recorded & 82/100 (82.0\%) & derived \\
+\url{action_steps_eval_sweep} & \url{combined} & \url{smolvla} & 50 & 4 & not recorded & \emph{not recorded} & not recorded & not recorded & 73/100 (73.0\%) & derived \\
+\url{action_steps_eval_sweep} & \url{combined} & \url{smolvla} & 50 & 8 & not recorded & \emph{not recorded} & not recorded & not recorded & 77/100 (77.0\%) & derived \\
+\url{action_steps_eval_sweep} & \url{combined} & \url{smolvla} & 50 & 16 & not recorded & \emph{not recorded} & not recorded & not recorded & 78/100 (78.0\%) & derived \\
+\url{action_steps_eval_sweep} & \url{combined} & \url{smolvla} & 50 & 32 & not recorded & \emph{not recorded} & not recorded & not recorded & 73/100 (73.0\%) & derived \\
+\url{action_steps_eval_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 2 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 44/50 (88.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 4 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 45/50 (90.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 47/50 (94.0\%) & imported \\
+\url{action_steps_eval_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 16 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 40/50 (80.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 32 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 45/50 (90.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{libero_object} & \url{smolvla} & 50 & 2 & not recorded & \emph{not recorded} & not recorded & not recorded & 46/50 (92.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{libero_object} & \url{smolvla} & 50 & 4 & not recorded & \emph{not recorded} & not recorded & not recorded & 42/50 (84.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{libero_object} & \url{smolvla} & 50 & 8 & not recorded & \emph{not recorded} & not recorded & not recorded & 45/50 (90.0\%) & imported \\
+\url{action_steps_eval_sweep} & \url{libero_object} & \url{smolvla} & 50 & 16 & not recorded & \emph{not recorded} & not recorded & not recorded & 44/50 (88.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{libero_object} & \url{smolvla} & 50 & 32 & not recorded & \emph{not recorded} & not recorded & not recorded & 42/50 (84.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 2 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 41/50 (82.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 4 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 38/50 (76.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 34/50 (68.0\%) & imported \\
+\url{action_steps_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 16 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 34/50 (68.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 32 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 26/50 (52.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{libero_spatial} & \url{smolvla} & 50 & 2 & not recorded & \emph{not recorded} & not recorded & not recorded & 36/50 (72.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{libero_spatial} & \url{smolvla} & 50 & 4 & not recorded & \emph{not recorded} & not recorded & not recorded & 31/50 (62.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{libero_spatial} & \url{smolvla} & 50 & 8 & not recorded & \emph{not recorded} & not recorded & not recorded & 32/50 (64.0\%) & imported \\
+\url{action_steps_eval_sweep} & \url{libero_spatial} & \url{smolvla} & 50 & 16 & not recorded & \emph{not recorded} & not recorded & not recorded & 34/50 (68.0\%) & ok \\
+\url{action_steps_eval_sweep} & \url{libero_spatial} & \url{smolvla} & 50 & 32 & not recorded & \emph{not recorded} & not recorded & not recorded & 31/50 (62.0\%) & ok \\
+\url{action_steps_eval_sweep_no_resclip} & \url{libero_object} & \url{hfrvla} & 50 & 2 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{action_steps_eval_sweep_no_resclip} & \url{libero_object} & \url{hfrvla} & 50 & 4 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{action_steps_eval_sweep_no_resclip} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{action_steps_eval_sweep_no_resclip} & \url{libero_object} & \url{hfrvla} & 50 & 16 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{action_steps_eval_sweep_no_resclip} & \url{libero_object} & \url{hfrvla} & 50 & 32 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{action_steps_eval_sweep_no_resclip} & \url{libero_spatial} & \url{hfrvla} & 50 & 2 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{action_steps_eval_sweep_no_resclip} & \url{libero_spatial} & \url{hfrvla} & 50 & 4 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{action_steps_eval_sweep_no_resclip} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{action_steps_eval_sweep_no_resclip} & \url{libero_spatial} & \url{hfrvla} & 50 & 16 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{action_steps_eval_sweep_no_resclip} & \url{libero_spatial} & \url{hfrvla} & 50 & 32 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{async_timestep_planner_delay_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 16 & 0 & 0.5/not recorded & 3e-4 & 1e-4 & 64/100 (64.0\%) & ok \\
+\url{async_timestep_planner_delay_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 16 & 1 & 0.5/not recorded & 3e-4 & 1e-4 & 68/100 (68.0\%) & ok \\
+\url{async_timestep_planner_delay_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 16 & 2 & 0.5/not recorded & 3e-4 & 1e-4 & 72/100 (72.0\%) & ok \\
+\url{async_timestep_planner_delay_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 16 & 3 & 0.5/not recorded & 3e-4 & 1e-4 & 68/100 (68.0\%) & ok \\
+\url{async_timestep_planner_delay_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 16 & 4 & 0.5/not recorded & 3e-4 & 1e-4 & 66/100 (66.0\%) & ok \\
+\url{async_timestep_planner_delay_eval_sweep} & \url{libero_spatial} & \url{hfrvla_disable_fast} & 50 & 16 & 0 & 0.5/not recorded & 3e-4 & 1e-4 & 68/100 (68.0\%) & ok \\
+\url{async_timestep_planner_delay_eval_sweep} & \url{libero_spatial} & \url{hfrvla_disable_fast} & 50 & 16 & 1 & 0.5/not recorded & 3e-4 & 1e-4 & 64/100 (64.0\%) & ok \\
+\url{async_timestep_planner_delay_eval_sweep} & \url{libero_spatial} & \url{hfrvla_disable_fast} & 50 & 16 & 2 & 0.5/not recorded & 3e-4 & 1e-4 & 62/100 (62.0\%) & ok \\
+\url{async_timestep_planner_delay_eval_sweep} & \url{libero_spatial} & \url{hfrvla_disable_fast} & 50 & 16 & 3 & 0.5/not recorded & 3e-4 & 1e-4 & 61/100 (61.0\%) & ok \\
+\url{async_timestep_planner_delay_eval_sweep} & \url{libero_spatial} & \url{hfrvla_disable_fast} & 50 & 16 & 4 & 0.5/not recorded & 3e-4 & 1e-4 & 56/100 (56.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{combined} & \url{hfrvla} & 2 & 2 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 82/100 (82.0\%) & derived \\
+\url{chunk_size_eval_sweep} & \url{combined} & \url{hfrvla} & 4 & 4 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 78/100 (78.0\%) & derived \\
+\url{chunk_size_eval_sweep} & \url{combined} & \url{hfrvla} & 8 & 8 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 83/100 (83.0\%) & derived \\
+\url{chunk_size_eval_sweep} & \url{combined} & \url{hfrvla} & 16 & 16 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 80/100 (80.0\%) & derived \\
+\url{chunk_size_eval_sweep} & \url{combined} & \url{hfrvla} & 32 & 32 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 71/100 (71.0\%) & derived \\
+\url{chunk_size_eval_sweep} & \url{combined} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 46/100 (46.0\%) & derived \\
+\url{chunk_size_eval_sweep} & \url{combined} & \url{smolvla} & 2 & 2 & not recorded & \emph{not recorded} & not recorded & not recorded & 76/100 (76.0\%) & derived \\
+\url{chunk_size_eval_sweep} & \url{combined} & \url{smolvla} & 4 & 4 & not recorded & \emph{not recorded} & not recorded & not recorded & 79/100 (79.0\%) & derived \\
+\url{chunk_size_eval_sweep} & \url{combined} & \url{smolvla} & 8 & 8 & not recorded & \emph{not recorded} & not recorded & not recorded & 74/100 (74.0\%) & derived \\
+\url{chunk_size_eval_sweep} & \url{combined} & \url{smolvla} & 16 & 16 & not recorded & \emph{not recorded} & not recorded & not recorded & 74/100 (74.0\%) & derived \\
+\url{chunk_size_eval_sweep} & \url{combined} & \url{smolvla} & 32 & 32 & not recorded & \emph{not recorded} & not recorded & not recorded & 67/100 (67.0\%) & derived \\
+\url{chunk_size_eval_sweep} & \url{combined} & \url{smolvla} & 50 & 50 & not recorded & \emph{not recorded} & not recorded & not recorded & 43/100 (43.0\%) & derived \\
+\url{chunk_size_eval_sweep} & \url{libero_object} & \url{hfrvla} & 2 & 2 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 44/50 (88.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_object} & \url{hfrvla} & 4 & 4 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 47/50 (94.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_object} & \url{hfrvla} & 8 & 8 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 47/50 (94.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_object} & \url{hfrvla} & 16 & 16 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 48/50 (96.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_object} & \url{hfrvla} & 32 & 32 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 44/50 (88.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_object} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 24/50 (48.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_object} & \url{smolvla} & 2 & 2 & not recorded & \emph{not recorded} & not recorded & not recorded & 43/50 (86.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_object} & \url{smolvla} & 4 & 4 & not recorded & \emph{not recorded} & not recorded & not recorded & 45/50 (90.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_object} & \url{smolvla} & 8 & 8 & not recorded & \emph{not recorded} & not recorded & not recorded & 45/50 (90.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_object} & \url{smolvla} & 16 & 16 & not recorded & \emph{not recorded} & not recorded & not recorded & 44/50 (88.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_object} & \url{smolvla} & 32 & 32 & not recorded & \emph{not recorded} & not recorded & not recorded & 41/50 (82.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_object} & \url{smolvla} & 50 & 50 & not recorded & \emph{not recorded} & not recorded & not recorded & 23/50 (46.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 2 & 2 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 38/50 (76.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 4 & 4 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 31/50 (62.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 8 & 8 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 36/50 (72.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 16 & 16 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 32/50 (64.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 32 & 32 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 27/50 (54.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/not recorded & 3e-4 & 1e-4 & 22/50 (44.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_spatial} & \url{smolvla} & 2 & 2 & not recorded & \emph{not recorded} & not recorded & not recorded & 33/50 (66.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_spatial} & \url{smolvla} & 4 & 4 & not recorded & \emph{not recorded} & not recorded & not recorded & 34/50 (68.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_spatial} & \url{smolvla} & 8 & 8 & not recorded & \emph{not recorded} & not recorded & not recorded & 29/50 (58.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_spatial} & \url{smolvla} & 16 & 16 & not recorded & \emph{not recorded} & not recorded & not recorded & 30/50 (60.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_spatial} & \url{smolvla} & 32 & 32 & not recorded & \emph{not recorded} & not recorded & not recorded & 26/50 (52.0\%) & ok \\
+\url{chunk_size_eval_sweep} & \url{libero_spatial} & \url{smolvla} & 50 & 50 & not recorded & \emph{not recorded} & not recorded & not recorded & 20/50 (40.0\%) & ok \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{libero_object} & \url{hfrvla} & 2 & 2 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{libero_object} & \url{hfrvla} & 4 & 4 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{libero_object} & \url{hfrvla} & 8 & 8 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{libero_object} & \url{hfrvla} & 16 & 16 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{libero_object} & \url{hfrvla} & 32 & 32 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{libero_object} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{libero_spatial} & \url{hfrvla} & 2 & 2 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{libero_spatial} & \url{hfrvla} & 4 & 4 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{libero_spatial} & \url{hfrvla} & 8 & 8 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{libero_spatial} & \url{hfrvla} & 16 & 16 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{libero_spatial} & \url{hfrvla} & 32 & 32 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{chunk_size_eval_sweep_no_resclip} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/999.0 & 3e-4 & 1e-4 & pending & pending \\
+\url{fwr_action_steps_10x10} & \url{combined} & \url{hfrvla} & 50 & 1 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 163/200 (81.5\%) & derived \\
+\url{fwr_action_steps_10x10} & \url{combined} & \url{hfrvla} & 50 & 2 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 158/200 (79.0\%) & derived \\
+\url{fwr_action_steps_10x10} & \url{combined} & \url{hfrvla} & 50 & 4 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 154/200 (77.0\%) & derived \\
+\url{fwr_action_steps_10x10} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 151/200 (75.5\%) & derived \\
+\url{fwr_action_steps_10x10} & \url{combined} & \url{hfrvla} & 50 & 16 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 147/200 (73.5\%) & derived \\
+\url{fwr_action_steps_10x10} & \url{combined} & \url{hfrvla} & 50 & 32 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 139/200 (69.5\%) & derived \\
+\url{fwr_action_steps_10x10} & \url{combined} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 110/200 (55.0\%) & derived \\
+\url{fwr_action_steps_10x10} & \url{libero_object} & \url{hfrvla} & 50 & 1 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 89/100 (89.0\%) & ok \\
+\url{fwr_action_steps_10x10} & \url{libero_object} & \url{hfrvla} & 50 & 2 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 89/100 (89.0\%) & ok \\
+\url{fwr_action_steps_10x10} & \url{libero_object} & \url{hfrvla} & 50 & 4 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 92/100 (92.0\%) & ok \\
+\url{fwr_action_steps_10x10} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 87/100 (87.0\%) & ok \\
+\url{fwr_action_steps_10x10} & \url{libero_object} & \url{hfrvla} & 50 & 16 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 89/100 (89.0\%) & ok \\
+\url{fwr_action_steps_10x10} & \url{libero_object} & \url{hfrvla} & 50 & 32 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 77/100 (77.0\%) & ok \\
+\url{fwr_action_steps_10x10} & \url{libero_object} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 57/100 (57.0\%) & ok \\
+\url{fwr_action_steps_10x10} & \url{libero_spatial} & \url{hfrvla} & 50 & 1 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 74/100 (74.0\%) & ok \\
+\url{fwr_action_steps_10x10} & \url{libero_spatial} & \url{hfrvla} & 50 & 2 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 69/100 (69.0\%) & ok \\
+\url{fwr_action_steps_10x10} & \url{libero_spatial} & \url{hfrvla} & 50 & 4 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 62/100 (62.0\%) & ok \\
+\url{fwr_action_steps_10x10} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 64/100 (64.0\%) & ok \\
+\url{fwr_action_steps_10x10} & \url{libero_spatial} & \url{hfrvla} & 50 & 16 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 58/100 (58.0\%) & ok \\
+\url{fwr_action_steps_10x10} & \url{libero_spatial} & \url{hfrvla} & 50 & 32 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 62/100 (62.0\%) & ok \\
+\url{fwr_action_steps_10x10} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 53/100 (53.0\%) & ok \\
+\url{fwr_chunk_plan50_exec50_eval} & \url{combined} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 48/100 (48.0\%) & derived \\
+\url{fwr_chunk_plan50_exec50_eval} & \url{libero_object} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 29/50 (58.0\%) & ok \\
+\url{fwr_chunk_plan50_exec50_eval} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 19/50 (38.0\%) & ok \\
+\url{fwr_chunk_size_10x10} & \url{combined} & \url{hfrvla} & 1 & 1 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 161/200 (80.5\%) & derived \\
+\url{fwr_chunk_size_10x10} & \url{combined} & \url{hfrvla} & 2 & 2 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 151/200 (75.5\%) & derived \\
+\url{fwr_chunk_size_10x10} & \url{combined} & \url{hfrvla} & 4 & 4 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 153/200 (76.5\%) & derived \\
+\url{fwr_chunk_size_10x10} & \url{combined} & \url{hfrvla} & 8 & 8 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 148/200 (74.0\%) & derived \\
+\url{fwr_chunk_size_10x10} & \url{combined} & \url{hfrvla} & 16 & 16 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 147/200 (73.5\%) & derived \\
+\url{fwr_chunk_size_10x10} & \url{combined} & \url{hfrvla} & 32 & 32 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 128/200 (64.0\%) & derived \\
+\url{fwr_chunk_size_10x10} & \url{combined} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 111/200 (55.5\%) & derived \\
+\url{fwr_chunk_size_10x10} & \url{libero_object} & \url{hfrvla} & 1 & 1 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 84/100 (84.0\%) & ok \\
+\url{fwr_chunk_size_10x10} & \url{libero_object} & \url{hfrvla} & 2 & 2 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 90/100 (90.0\%) & ok \\
+\url{fwr_chunk_size_10x10} & \url{libero_object} & \url{hfrvla} & 4 & 4 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 88/100 (88.0\%) & ok \\
+\url{fwr_chunk_size_10x10} & \url{libero_object} & \url{hfrvla} & 8 & 8 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 85/100 (85.0\%) & ok \\
+\url{fwr_chunk_size_10x10} & \url{libero_object} & \url{hfrvla} & 16 & 16 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 90/100 (90.0\%) & ok \\
+\url{fwr_chunk_size_10x10} & \url{libero_object} & \url{hfrvla} & 32 & 32 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 71/100 (71.0\%) & ok \\
+\url{fwr_chunk_size_10x10} & \url{libero_object} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 57/100 (57.0\%) & ok \\
+\url{fwr_chunk_size_10x10} & \url{libero_spatial} & \url{hfrvla} & 1 & 1 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 77/100 (77.0\%) & ok \\
+\url{fwr_chunk_size_10x10} & \url{libero_spatial} & \url{hfrvla} & 2 & 2 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 61/100 (61.0\%) & ok \\
+\url{fwr_chunk_size_10x10} & \url{libero_spatial} & \url{hfrvla} & 4 & 4 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 65/100 (65.0\%) & ok \\
+\url{fwr_chunk_size_10x10} & \url{libero_spatial} & \url{hfrvla} & 8 & 8 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 63/100 (63.0\%) & ok \\
+\url{fwr_chunk_size_10x10} & \url{libero_spatial} & \url{hfrvla} & 16 & 16 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 57/100 (57.0\%) & ok \\
+\url{fwr_chunk_size_10x10} & \url{libero_spatial} & \url{hfrvla} & 32 & 32 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 57/100 (57.0\%) & ok \\
+\url{fwr_chunk_size_10x10} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.2 & 3e-4 & 1e-5 & 54/100 (54.0\%) & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{libero_spatial} & \url{hfrvla} & 1 & 1 & not recorded & 0.5/0.2 & not recorded & not recorded & 73/100 (73.0\%) & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{libero_spatial} & \url{hfrvla} & 2 & 2 & not recorded & 0.5/0.2 & not recorded & not recorded & 71/100 (71.0\%) & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{libero_spatial} & \url{hfrvla} & 4 & 4 & not recorded & 0.5/0.2 & not recorded & not recorded & 73/100 (73.0\%) & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{libero_spatial} & \url{hfrvla} & 8 & 8 & not recorded & 0.5/0.2 & not recorded & not recorded & 65/100 (65.0\%) & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{libero_spatial} & \url{hfrvla} & 16 & 16 & not recorded & 0.5/0.2 & not recorded & not recorded & 60/100 (60.0\%) & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{libero_spatial} & \url{hfrvla} & 32 & 32 & not recorded & 0.5/0.2 & not recorded & not recorded & 60/100 (60.0\%) & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.2 & not recorded & not recorded & 53/100 (53.0\%) & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{libero_spatial} & \url{smolvla} & 1 & 1 & not recorded & \emph{not recorded} & not recorded & not recorded & 77/100 (77.0\%) & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{libero_spatial} & \url{smolvla} & 2 & 2 & not recorded & \emph{not recorded} & not recorded & not recorded & 77/100 (77.0\%) & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{libero_spatial} & \url{smolvla} & 4 & 4 & not recorded & \emph{not recorded} & not recorded & not recorded & 65/100 (65.0\%) & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{libero_spatial} & \url{smolvla} & 8 & 8 & not recorded & \emph{not recorded} & not recorded & not recorded & 62/100 (62.0\%) & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{libero_spatial} & \url{smolvla} & 16 & 16 & not recorded & \emph{not recorded} & not recorded & not recorded & 54/100 (54.0\%) & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{libero_spatial} & \url{smolvla} & 32 & 32 & not recorded & \emph{not recorded} & not recorded & not recorded & 51/100 (51.0\%) & ok \\
+\url{fwr_generated_matched_chunk_10x10_spatial} & \url{libero_spatial} & \url{smolvla} & 50 & 50 & not recorded & \emph{not recorded} & not recorded & not recorded & 40/100 (40.0\%) & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{libero_spatial} & \url{hfrvla} & 50 & 1 & not recorded & 0.5/0.2 & not recorded & not recorded & 75/100 (75.0\%) & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{libero_spatial} & \url{hfrvla} & 50 & 2 & not recorded & 0.5/0.2 & not recorded & not recorded & 79/100 (79.0\%) & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{libero_spatial} & \url{hfrvla} & 50 & 4 & not recorded & 0.5/0.2 & not recorded & not recorded & 80/100 (80.0\%) & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.5/0.2 & not recorded & not recorded & 71/100 (71.0\%) & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{libero_spatial} & \url{hfrvla} & 50 & 16 & not recorded & 0.5/0.2 & not recorded & not recorded & 75/100 (75.0\%) & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{libero_spatial} & \url{hfrvla} & 50 & 32 & not recorded & 0.5/0.2 & not recorded & not recorded & 59/100 (59.0\%) & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.2 & not recorded & not recorded & 53/100 (53.0\%) & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{libero_spatial} & \url{smolvla} & 50 & 1 & not recorded & \emph{not recorded} & not recorded & not recorded & 79/100 (79.0\%) & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{libero_spatial} & \url{smolvla} & 50 & 2 & not recorded & \emph{not recorded} & not recorded & not recorded & 72/100 (72.0\%) & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{libero_spatial} & \url{smolvla} & 50 & 4 & not recorded & \emph{not recorded} & not recorded & not recorded & 65/100 (65.0\%) & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{libero_spatial} & \url{smolvla} & 50 & 8 & not recorded & \emph{not recorded} & not recorded & not recorded & 60/100 (60.0\%) & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{libero_spatial} & \url{smolvla} & 50 & 16 & not recorded & \emph{not recorded} & not recorded & not recorded & 57/100 (57.0\%) & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{libero_spatial} & \url{smolvla} & 50 & 32 & not recorded & \emph{not recorded} & not recorded & not recorded & 50/100 (50.0\%) & ok \\
+\url{fwr_generated_plan50_exec_10x10_spatial} & \url{libero_spatial} & \url{smolvla} & 50 & 50 & not recorded & \emph{not recorded} & not recorded & not recorded & 40/100 (40.0\%) & ok \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 3e-4 & 1e-5 & 85/100 (85.0\%) & derived \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 3e-4 & 1e-4 & 84/100 (84.0\%) & derived \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 3e-4 & 3e-4 & 81/100 (81.0\%) & derived \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 3e-4 & 0 & 85/100 (85.0\%) & derived \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 5e-4 & 1e-5 & 83/100 (83.0\%) & derived \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 5e-4 & 1e-4 & 82/100 (82.0\%) & derived \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 5e-4 & 3e-4 & 70/100 (70.0\%) & derived \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{combined} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 5e-4 & 0 & 83/100 (83.0\%) & derived \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 3e-4 & 1e-5 & 49/50 (98.0\%) & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 3e-4 & 1e-4 & 48/50 (96.0\%) & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 3e-4 & 3e-4 & 44/50 (88.0\%) & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 3e-4 & 0 & 49/50 (98.0\%) & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 5e-4 & 1e-5 & 49/50 (98.0\%) & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 5e-4 & 1e-4 & 49/50 (98.0\%) & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 5e-4 & 3e-4 & 48/50 (96.0\%) & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_object} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 5e-4 & 0 & 49/50 (98.0\%) & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 3e-4 & 1e-5 & 36/50 (72.0\%) & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 3e-4 & 1e-4 & 36/50 (72.0\%) & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 3e-4 & 3e-4 & 37/50 (74.0\%) & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 3e-4 & 0 & 36/50 (72.0\%) & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 5e-4 & 1e-5 & 34/50 (68.0\%) & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 5e-4 & 1e-4 & 33/50 (66.0\%) & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 5e-4 & 3e-4 & 22/50 (44.0\%) & cached \\
+\url{hfrvla_lrwd_alpha075_clip02_eval} & \url{libero_spatial} & \url{hfrvla} & 50 & 8 & not recorded & 0.75/0.2 & 5e-4 & 0 & 34/50 (68.0\%) & cached \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.25/0.05 & not recorded & not recorded & 23/50 (46.0\%) & cached \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.25/0.1 & not recorded & not recorded & 23/50 (46.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.25/0.15 & not recorded & not recorded & 24/50 (48.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.25/0.18 & not recorded & not recorded & 24/50 (48.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.25/0.2 & not recorded & not recorded & 27/50 (54.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.25/0.22 & not recorded & not recorded & 25/50 (50.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.25/0.25 & not recorded & not recorded & 21/50 (42.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.25/0.3 & not recorded & not recorded & 26/50 (52.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.25/999.0 & not recorded & not recorded & 22/50 (44.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.05 & not recorded & not recorded & 27/50 (54.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.1 & not recorded & not recorded & 23/50 (46.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.15 & not recorded & not recorded & 22/50 (44.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.18 & not recorded & not recorded & 23/50 (46.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.2 & not recorded & not recorded & 28/50 (56.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.22 & not recorded & not recorded & 26/50 (52.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.25 & not recorded & not recorded & 25/50 (50.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/0.3 & not recorded & not recorded & 22/50 (44.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.5/999.0 & not recorded & not recorded & 8/50 (16.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.75/0.05 & not recorded & not recorded & 24/50 (48.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.75/0.1 & not recorded & not recorded & 24/50 (48.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.75/0.15 & not recorded & not recorded & 23/50 (46.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.75/0.18 & not recorded & not recorded & 23/50 (46.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.75/0.2 & not recorded & not recorded & 26/50 (52.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.75/0.22 & not recorded & not recorded & 26/50 (52.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.75/0.25 & not recorded & not recorded & 20/50 (40.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.75/0.3 & not recorded & not recorded & 18/50 (36.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 0.75/999.0 & not recorded & not recorded & 2/50 (4.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 1.0/0.05 & not recorded & not recorded & 25/50 (50.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 1.0/0.1 & not recorded & not recorded & 28/50 (56.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 1.0/0.15 & not recorded & not recorded & 24/50 (48.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 1.0/0.18 & not recorded & not recorded & 20/50 (40.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 1.0/0.2 & not recorded & not recorded & 23/50 (46.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 1.0/0.22 & not recorded & not recorded & 20/50 (40.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 1.0/0.25 & not recorded & not recorded & 21/50 (42.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 1.0/0.3 & not recorded & not recorded & 19/50 (38.0\%) & ok \\
+\url{n50_alpha_clip_spatial_50eps} & \url{libero_spatial} & \url{hfrvla} & 50 & 50 & not recorded & 1.0/999.0 & not recorded & not recorded & 1/50 (2.0\%) & ok \\
+\end{longtable}
+\end{tiny}

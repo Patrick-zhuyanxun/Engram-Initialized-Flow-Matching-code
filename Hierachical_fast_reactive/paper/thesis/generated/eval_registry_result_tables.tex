@@ -1,0 +1,186 @@
+\begin{table}[htbp]
+\centering
+\caption{Generated checkpoint LIBERO-Spatial 10x10 synchronous plan-50 execution sweep exact values.}
+\label{tab:thesis-generated-plan50}
+\begin{tabular}{@{}rrr@{}}
+\toprule
+$K$ & SmolVLA success & HFRVLA success \\
+\midrule
+1 & 79.0\% & 75.0\% \\
+2 & 72.0\% & 79.0\% \\
+4 & 65.0\% & 80.0\% \\
+8 & 60.0\% & 71.0\% \\
+16 & 57.0\% & 75.0\% \\
+32 & 50.0\% & 59.0\% \\
+50 & 40.0\% & 53.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Generated checkpoint LIBERO-Spatial 10x10 synchronous matched chunk sweep exact values.}
+\label{tab:thesis-generated-matched}
+\begin{tabular}{@{}rrr@{}}
+\toprule
+$K$ & SmolVLA success & HFRVLA success \\
+\midrule
+1 & 77.0\% & 73.0\% \\
+2 & 77.0\% & 71.0\% \\
+4 & 65.0\% & 73.0\% \\
+8 & 62.0\% & 65.0\% \\
+16 & 54.0\% & 60.0\% \\
+32 & 51.0\% & 60.0\% \\
+50 & 40.0\% & 53.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Async-timestep planner-delay sweep exact values. 每列為 LIBERO-Spatial 100 episodes，plan=50、execution/replan=16、async request interval=8。}
+\label{tab:thesis-async-delay}
+\begin{tabular}{@{}rrr@{}}
+\toprule
+Delay $d$ & Disable-fast success & HFRVLA success \\
+\midrule
+0 & 68.0\% & 64.0\% \\
+1 & 64.0\% & 68.0\% \\
+2 & 62.0\% & 72.0\% \\
+3 & 61.0\% & 68.0\% \\
+4 & 56.0\% & 66.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{small}
+\begin{longtable}{@{}rrrrr@{}}
+\caption{Plan=50, exec=8 的 Spatial alpha/clip calibration。每列為 50 episodes。}\label{tab:thesis-alpha-clip-exec8}\\
+\toprule
+$\alpha$ & $\delta_{\max}$ & Plan & Exec & Success \\
+\midrule
+\endfirsthead
+\caption[]{Plan=50, exec=8 的 Spatial alpha/clip calibration。每列為 50 episodes。（續）}\\
+\toprule
+$\alpha$ & $\delta_{\max}$ & Plan & Exec & Success \\
+\midrule
+\endhead
+\midrule
+\multicolumn{5}{r}{續下頁}\\
+\endfoot
+\bottomrule
+\endlastfoot
+0.25 & 0.2 & 50 & 8 & 25/50 (50.0\%) \\
+0.25 & 0.3 & 50 & 8 & 37/50 (74.0\%) \\
+0.25 & 0.4 & 50 & 8 & 32/50 (64.0\%) \\
+0.5 & 0.2 & 50 & 8 & 34/50 (68.0\%) \\
+0.5 & 0.3 & 50 & 8 & 33/50 (66.0\%) \\
+0.5 & 0.4 & 50 & 8 & 35/50 (70.0\%) \\
+0.75 & 0.2 & 50 & 8 & 41/50 (82.0\%) \\
+0.75 & 0.3 & 50 & 8 & 38/50 (76.0\%) \\
+0.75 & 0.4 & 50 & 8 & 37/50 (74.0\%) \\
+1.0 & 0.2 & 50 & 8 & 38/50 (76.0\%) \\
+1.0 & 0.3 & 50 & 8 & 34/50 (68.0\%) \\
+1.0 & 0.4 & 50 & 8 & 36/50 (72.0\%) \\
+\end{longtable}
+\end{small}
+
+\begin{small}
+\begin{longtable}{@{}rrrrr@{}}
+\caption{Plan=exec=replan=50 的 Spatial alpha/clip long-chunk calibration。每列為 50 episodes。}\label{tab:thesis-alpha-clip-n50}\\
+\toprule
+$\alpha$ & $\delta_{\max}$ & Plan & Exec & Success \\
+\midrule
+\endfirsthead
+\caption[]{Plan=exec=replan=50 的 Spatial alpha/clip long-chunk calibration。每列為 50 episodes。（續）}\\
+\toprule
+$\alpha$ & $\delta_{\max}$ & Plan & Exec & Success \\
+\midrule
+\endhead
+\midrule
+\multicolumn{5}{r}{續下頁}\\
+\endfoot
+\bottomrule
+\endlastfoot
+0.25 & 0.05 & 50 & 50 & 23/50 (46.0\%) \\
+0.25 & 0.1 & 50 & 50 & 23/50 (46.0\%) \\
+0.25 & 0.15 & 50 & 50 & 24/50 (48.0\%) \\
+0.25 & 0.18 & 50 & 50 & 24/50 (48.0\%) \\
+0.25 & 0.2 & 50 & 50 & 27/50 (54.0\%) \\
+0.25 & 0.22 & 50 & 50 & 25/50 (50.0\%) \\
+0.25 & 0.25 & 50 & 50 & 21/50 (42.0\%) \\
+0.25 & 0.3 & 50 & 50 & 26/50 (52.0\%) \\
+0.25 & 999.0 & 50 & 50 & 22/50 (44.0\%) \\
+0.5 & 0.05 & 50 & 50 & 27/50 (54.0\%) \\
+0.5 & 0.1 & 50 & 50 & 23/50 (46.0\%) \\
+0.5 & 0.15 & 50 & 50 & 22/50 (44.0\%) \\
+0.5 & 0.18 & 50 & 50 & 23/50 (46.0\%) \\
+0.5 & 0.2 & 50 & 50 & 28/50 (56.0\%) \\
+0.5 & 0.22 & 50 & 50 & 26/50 (52.0\%) \\
+0.5 & 0.25 & 50 & 50 & 25/50 (50.0\%) \\
+0.5 & 0.3 & 50 & 50 & 22/50 (44.0\%) \\
+0.5 & 999.0 & 50 & 50 & 8/50 (16.0\%) \\
+0.75 & 0.05 & 50 & 50 & 24/50 (48.0\%) \\
+0.75 & 0.1 & 50 & 50 & 24/50 (48.0\%) \\
+0.75 & 0.15 & 50 & 50 & 23/50 (46.0\%) \\
+0.75 & 0.18 & 50 & 50 & 23/50 (46.0\%) \\
+0.75 & 0.2 & 50 & 50 & 26/50 (52.0\%) \\
+0.75 & 0.22 & 50 & 50 & 26/50 (52.0\%) \\
+0.75 & 0.25 & 50 & 50 & 20/50 (40.0\%) \\
+0.75 & 0.3 & 50 & 50 & 18/50 (36.0\%) \\
+0.75 & 999.0 & 50 & 50 & 2/50 (4.0\%) \\
+1.0 & 0.05 & 50 & 50 & 25/50 (50.0\%) \\
+1.0 & 0.1 & 50 & 50 & 28/50 (56.0\%) \\
+1.0 & 0.15 & 50 & 50 & 24/50 (48.0\%) \\
+1.0 & 0.18 & 50 & 50 & 20/50 (40.0\%) \\
+1.0 & 0.2 & 50 & 50 & 23/50 (46.0\%) \\
+1.0 & 0.22 & 50 & 50 & 20/50 (40.0\%) \\
+1.0 & 0.25 & 50 & 50 & 21/50 (42.0\%) \\
+1.0 & 0.3 & 50 & 50 & 19/50 (38.0\%) \\
+1.0 & 999.0 & 50 & 50 & 1/50 (2.0\%) \\
+\end{longtable}
+\end{small}
+
+\begin{small}
+\begin{longtable}{@{}p{0.16\linewidth}p{0.16\linewidth}p{0.17\linewidth}p{0.20\linewidth}p{0.17\linewidth}@{}}
+\caption{LR/WD diagnostic exact rows for plan=50, exec=8, $\alpha=0.75,\delta_{\max}=0.2$. 這些 rows 用於 checkpoint selection，不作為主結果。}\label{tab:thesis-lrwd-diagnostic}\\
+\toprule
+LR & Weight decay & Suite & Checkpoint/profile & Success \\
+\midrule
+\endfirsthead
+\caption[]{LR/WD diagnostic exact rows for plan=50, exec=8, $\alpha=0.75,\delta_{\max}=0.2$. 這些 rows 用於 checkpoint selection，不作為主結果。（續）}\\
+\toprule
+LR & Weight decay & Suite & Checkpoint/profile & Success \\
+\midrule
+\endhead
+\midrule
+\multicolumn{5}{r}{續下頁}\\
+\endfoot
+\bottomrule
+\endlastfoot
+3e-4 & 0 & combined & \url{hfrvla_lr3e_4_wd0_b512_50k} & 85/100 (85.0\%) \\
+3e-4 & 0 & libero\_object & \url{hfrvla_lr3e_4_wd0_b512_50k} & 49/50 (98.0\%) \\
+3e-4 & 0 & libero\_spatial & \url{hfrvla_lr3e_4_wd0_b512_50k} & 36/50 (72.0\%) \\
+3e-4 & 1e-5 & combined & \url{hfrvla_lr3e_4_wd1e_5_b512_50k} & 85/100 (85.0\%) \\
+3e-4 & 1e-5 & libero\_object & \url{hfrvla_lr3e_4_wd1e_5_b512_50k} & 49/50 (98.0\%) \\
+3e-4 & 1e-5 & libero\_spatial & \url{hfrvla_lr3e_4_wd1e_5_b512_50k} & 36/50 (72.0\%) \\
+3e-4 & 1e-4 & combined & \url{hfrvla_lr3e_4_wd1e_4_b512_50k} & 84/100 (84.0\%) \\
+3e-4 & 1e-4 & libero\_object & \url{hfrvla_lr3e_4_wd1e_4_b512_50k} & 48/50 (96.0\%) \\
+3e-4 & 1e-4 & libero\_spatial & \url{hfrvla_lr3e_4_wd1e_4_b512_50k} & 36/50 (72.0\%) \\
+3e-4 & 3e-4 & combined & \url{hfrvla_lr3e_4_wd3e_4_b512_50k} & 81/100 (81.0\%) \\
+3e-4 & 3e-4 & libero\_object & \url{hfrvla_lr3e_4_wd3e_4_b512_50k} & 44/50 (88.0\%) \\
+3e-4 & 3e-4 & libero\_spatial & \url{hfrvla_lr3e_4_wd3e_4_b512_50k} & 37/50 (74.0\%) \\
+5e-4 & 0 & combined & \url{hfrvla_lr5e_4_wd0_b512_50k} & 83/100 (83.0\%) \\
+5e-4 & 0 & libero\_object & \url{hfrvla_lr5e_4_wd0_b512_50k} & 49/50 (98.0\%) \\
+5e-4 & 0 & libero\_spatial & \url{hfrvla_lr5e_4_wd0_b512_50k} & 34/50 (68.0\%) \\
+5e-4 & 1e-5 & combined & \url{hfrvla_lr5e_4_wd1e_5_b512_50k} & 83/100 (83.0\%) \\
+5e-4 & 1e-5 & libero\_object & \url{hfrvla_lr5e_4_wd1e_5_b512_50k} & 49/50 (98.0\%) \\
+5e-4 & 1e-5 & libero\_spatial & \url{hfrvla_lr5e_4_wd1e_5_b512_50k} & 34/50 (68.0\%) \\
+5e-4 & 1e-4 & combined & \url{hfrvla_lr5e_4_wd1e_4_b512_50k} & 82/100 (82.0\%) \\
+5e-4 & 1e-4 & libero\_object & \url{hfrvla_lr5e_4_wd1e_4_b512_50k} & 49/50 (98.0\%) \\
+5e-4 & 1e-4 & libero\_spatial & \url{hfrvla_lr5e_4_wd1e_4_b512_50k} & 33/50 (66.0\%) \\
+5e-4 & 3e-4 & combined & \url{hfrvla_lr5e_4_wd3e_4_b512_50k} & 70/100 (70.0\%) \\
+5e-4 & 3e-4 & libero\_object & \url{hfrvla_lr5e_4_wd3e_4_b512_50k} & 48/50 (96.0\%) \\
+5e-4 & 3e-4 & libero\_spatial & \url{hfrvla_lr5e_4_wd3e_4_b512_50k} & 22/50 (44.0\%) \\
+\end{longtable}
+\end{small}

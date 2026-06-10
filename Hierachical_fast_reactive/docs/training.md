@@ -14,7 +14,8 @@ Active scripts:
 - `scripts/package_hfrvla_checkpoint.py` - bundle SmolVLA + fast weights into a `lerobot-eval` checkpoint dir (`--disable-fast` for alignment tests)
 - `scripts/check_hfrvla_training_contract.py` - offline train-time dataset/window/target contract check
 - `scripts/test_alignment.py` - I/O alignment check against the frozen SmolVLA slow planner before training
-- `lerobot-eval` - CLI evaluation, no wrapper needed
+- `scripts/run_planner_delay_eval_sweep.py` - paper-facing inference-delay stress sweep
+- `lerobot-eval` - normal CLI evaluation; delay sweeps use `scripts/lerobot_eval_hfrvla.py` so debug metrics and direct-SmolVLA action delay can be recorded
 
 Legacy scripts live in `scripts/legacy/`; see `scripts/legacy/README.md`.
 
@@ -833,6 +834,60 @@ Interpretation for paper writing:
    planning/execution protocol.
 5. Any future training-parameter experiment should add rows to
    `experiments/eval_registry/sources.csv`, then regenerate the master CSV.
+
+### Async-timestep planner-delay eval
+
+The planner-delay eval simulates slow VLA chunk generation latency with
+discrete async-timestep semantics. At request step `t`, the slow planner
+observes `o_t` and starts generating `A_t`. At ready step `t+d`, the chunk
+replaces the active execution queue immediately. Because `d` control steps have
+elapsed, execution starts from `A_t[d]`, not `A_t[0]`. The wrist residual is not
+delayed and continues using current wrist feedback at every control step.
+
+Run a smoke check with:
+
+```bash
+/home/hucenrotia/Robotic_infra/lerobot/.venv/bin/python scripts/run_planner_delay_eval_sweep.py \
+    --planner-delay-steps 0,1,4 \
+    --policies hfrvla,hfrvla_disable_fast \
+    --planning-chunk-size 50 \
+    --n-action-steps 16 \
+    --async-request-interval-steps 8 \
+    --suites libero_spatial \
+    --task-ids '[0]' \
+    --n-episodes 1 \
+    --eval-batch-size 1 \
+    --device cuda \
+    --csv outputs/async_timestep_planner_delay_eval_sweep/smoke_results.csv \
+    --eval-root outputs/async_timestep_planner_delay_eval_sweep/smoke_evals
+```
+
+Run the main spatial sweep with:
+
+```bash
+/home/hucenrotia/Robotic_infra/lerobot/.venv/bin/python scripts/run_planner_delay_eval_sweep.py \
+    --planner-delay-steps 0,1,2,3,4 \
+    --policies hfrvla,hfrvla_disable_fast \
+    --planning-chunk-size 50 \
+    --n-action-steps 16 \
+    --async-request-interval-steps 8 \
+    --suites libero_spatial \
+    --n-episodes 10 \
+    --hfrvla-alpha 0.5 \
+    --hfrvla-delta-max 0.2 \
+    --eval-batch-size 3 \
+    --device cuda
+```
+
+Outputs are written under `outputs/async_timestep_planner_delay_eval_sweep/`.
+The CSV records `planner_delay_mode`, `planner_delay_steps`,
+`async_request_interval_steps`, `async_request_count`, `async_activation_count`,
+`async_chunk_start_index_mean`, `async_dropped_old_queue_steps_mean`,
+`slow_replan_count`, `slow_chunk_latency_ms_mean`, `fast_latency_ms_mean`,
+`fast_applied_ratio`, `delta_norm_mean`, `delta_clip_fraction_mean`, and
+`k_mean`. The implementation validates
+`async_request_interval_steps + planner_delay_steps <= n_action_steps`; the
+main setting uses `8 + 4 <= 16`.
 
 If `scripts/package_hfrvla_checkpoint.py` is run in a sandbox where CUDA is not
 visible, the saved packaged config can contain `"device": "cpu"`. For formal GPU

@@ -1,7 +1,7 @@
 # Research Questions — HFRVLA
 
 > Synced with the current A2C2-Wrist / Fast Wrist Residual mainline.
-> Last updated: 2026-06-05
+> Last updated: 2026-06-06
 
 ---
 
@@ -54,6 +54,10 @@ engineering history, but they should not anchor the first paper narrative.
   misalignment and long-chunk drift.
 - LIBERO-Object remains useful for combined paper tables, but current
   calibration sweeps should not use Object until Spatial trends are clear.
+- The generated-checkpoint spatial 10x10 action-step and matched-chunk sweeps
+  are completed at `alpha=0.5`, `delta_max=0.2`, and `eval.batch_size=3`;
+  use the eval registry and HTML dashboard for numbers rather than promoting
+  them directly into manuscript claims.
 - A2C2-style comparison should be written carefully: HFRVLA is wrist-centric
   but still uses slow-planner context, not a pure wrist-only policy.
 

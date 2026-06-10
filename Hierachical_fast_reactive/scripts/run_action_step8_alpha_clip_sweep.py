@@ -120,7 +120,7 @@ def build_specs(args: argparse.Namespace) -> list[EvalSpec]:
                         seed=args.seed,
                         n_episodes_per_task=args.n_episodes,
                         device=args.device,
-                        eval_batch_size=args.eval_batch_size,
+                        eval_batch_size=getattr(args, "eval_batch_size", 1),
                         planning_chunk_size=metadata.planning_chunk_size,
                         policy_config_n_action_steps=metadata.policy_config_n_action_steps,
                         residual_clip_mode="config",

@@ -1,0 +1,77 @@
+\chapter{研究流程與附錄}
+\label{ch:appendix}
+
+\section{NYCU template usage}
+
+本 LaTeX project 直接依照本地模板壓縮檔重建：
+
+\begin{quote}
+\texttt{paper/templates/nycu\_thesis/NYCU\_thesis\_template\_\_1\_.zip}
+\end{quote}
+
+保留的模板結構包含：
+
+\begin{itemize}
+  \item \texttt{covers/front\_var.tex}：封面。
+  \item \texttt{covers/inside\_var.tex}：書名頁與浮水印。
+  \item \texttt{covers/toc\_var.tex}：中文/英文摘要、目錄、圖目錄、表目錄。
+  \item \texttt{Sections/*.tex}：章節拆檔。
+  \item \texttt{ref.bib}：BibTeX bibliography。
+\end{itemize}
+
+與原模板不同處是 \texttt{covers/load\_env.tex} 加入字型 fallback。原模板預設 \texttt{TW-Kai}，但本機沒有該字型，因此本版本會優先使用 \texttt{TW-Kai}，不存在時改用 \texttt{Noto Serif CJK TC} 或 \texttt{Noto Sans CJK TC}。
+
+\section{Research-process order}
+
+本 thesis 的長期維護順序如下：
+
+\begin{enumerate}
+  \item 研究想法：bounded wrist residual correction for frozen VLA chunks。
+  \item 研究背景與依據：VLA inference cost、action chunking、stale execution。
+  \item 文獻蒐集：VLA、chunking、real-time VLA、fast-slow correction、wrist/DINO。
+  \item 文獻比較與研究缺口：frozen SmolVLA chunk execution correction。
+  \item 研究問題：success-rate improvement under controlled chunk protocols。
+  \item 研究架構：slow planner + fast wrist residual。
+  \item 研究方法：dataset/cache、DINO patches、residual target、clipped merge。
+  \item 資料分析：registry-backed success rate。
+  \item 研究結果：synchronous sweeps、calibration、async delay。
+  \item 討論：where it helps, where it fails, what remains unsupported。
+  \item 結論：bounded local correction layer。
+  \item 前言、摘要、關鍵詞、題名：最後同步修訂。
+  \item 參考文獻整理、排版與目次生成：final formatting stage。
+\end{enumerate}
+
+\section{Unfinished experiments}
+
+以下項目以紅字保留，表示尚不足以支撐 main-text claim：
+
+\begin{itemize}
+  \item \textcolor{red}{Dual-view DINO fast residual ablation}：wrist + third-person image fast model。
+  \item \textcolor{red}{Latent-context ablation}：移除 residual head 中的 \texttt{z\_goal}/\texttt{z\_phase}。
+  \item \textcolor{red}{Chunk-age/stale-target training}：用 delayed base chunks 訓練 residual targets。
+  \item \textcolor{red}{No-residual-clip control sweeps}：完整擴展 no-clip controls。
+  \item \textcolor{red}{Multi-seed confidence intervals}：以多 seeds 或 task-order variants 重跑 main sweeps。
+  \item \textcolor{red}{Causal visual ablations}：wrist mask、third-person mask、DINO patch masking。
+  \item \textcolor{red}{Direct A2C2 same-backbone comparison}：同一 SmolVLA backbone 與 registry 下重現 A2C2。
+  \item \textcolor{red}{Real-robot tabletop validation}：在 physical tabletop setup 執行 matched trials。
+\end{itemize}
+
+\section{Build commands}
+
+本 target project 可於以下目錄編譯：
+
+\begin{quote}
+\texttt{paper/targets/nycu\_thesis/latex}
+\end{quote}
+
+編譯命令：
+
+\begin{quote}
+\texttt{bash build.sh}
+\end{quote}
+
+Registry 檢查命令：
+
+\begin{quote}
+\texttt{python3 scripts/build\_eval\_results\_master.py --check}
+\end{quote}

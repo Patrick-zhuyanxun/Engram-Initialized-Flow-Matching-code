@@ -1,0 +1,91 @@
+% Rebuilt from the local NYCU thesis template archive:
+% paper/templates/nycu_thesis/NYCU_thesis_template__1_.zip
+
+\input{covers/load_env.tex}
+
+% Use Chinese table of contents, figure list, and table list.
+\toggletrue{toc-use-cn}
+
+% Master's thesis by default. Do not enable iamphd unless this becomes a PhD dissertation.
+%\toggletrue{iamphd}
+
+\newcommand{\method}{HFRVLA}
+\newcommand{\smolvla}{SmolVLA}
+\newcommand{\abase}{a_{\mathrm{base}}}
+\newcommand{\afinal}{a_{\mathrm{final}}}
+\newcommand{\deltah}{\hat{\Delta a}}
+\newcommand{\dmax}{\delta_{\max}}
+\newcommand{\clip}{\mathrm{clip}}
+
+\graphicspath{{img/}{figures/}}
+
+% #### Thesis metadata ####
+\newcommand{\chineseTitle}{HFRVLA：凍結視覺語言動作模型動作片段之腕部相機殘差修正}
+\newcommand{\englishTitle}{HFRVLA: Wrist-Camera Residual Correction for Frozen Vision-Language-Action Action Chunks}
+
+\newcommand{\studentCnName}{Patrick Chu}
+\newcommand{\studentEnName}{Patrick Chu}
+\newcommand{\studentEnNameA}{Chu, Patrick}
+
+% TODO: replace after advisor metadata is confirmed.
+\newcommand{\advisorCnName}{待填}
+\newcommand{\advisorEnName}{TBD}
+\newcommand{\advisorEnNamex}{TBD}
+
+\newcommand{\ThesisDate}{June 2026}
+\newcommand{\ThesisDateTW}{中華民國一一五年六月}
+
+% TODO: confirm official NYCU degree names with department office.
+\newcommand{\NameofCollegeCN}{資訊學院}
+\newcommand{\NameofCollegeEN}{College of Computer Science}
+\newcommand{\NameofDepartmentInstituteCN}{資訊工程學系}
+\newcommand{\NameofDepartmentInstituteEN}{Department of Computer Science}
+\newcommand{\NameofDegree}{Master of Science}
+\newcommand{\ResearchTopic}{Computer Science}
+
+\makeatletter
+\renewcommand*\l@figure[2]{\@dottedtocline{1}{1.5em}{2.3em}{#1}{#2}}
+\renewcommand*\l@table[2]{\@dottedtocline{1}{1.5em}{2.3em}{#1}{#2}}
+\makeatother
+
+\begin{document}
+
+\newgeometry{top=3cm,bottom=3cm,left=3cm,right=3cm}
+\input{covers/front_var.tex}
+\input{covers/inside_var.tex}
+\restoregeometry
+
+\input{Sections/0.1.Acknowledgement}\newpage
+
+\frontmatter
+\pagenumbering{roman}
+
+{\fontfamily{ptm}\selectfont
+\input{covers/toc_var.tex}
+
+\mainmatter
+\pagenumbering{arabic}
+
+\input{Sections/1.Introduction} \newpage
+\input{Sections/2.Relatedwork} \newpage
+\input{Sections/3.Framework} \newpage
+\input{Sections/4.Methodology} \newpage
+\input{Sections/5.Experiments} \newpage
+\input{Sections/6.ResultsDiscussion} \newpage
+\input{Sections/7.Conclusion} \newpage
+
+\iftoggle{toc-use-cn}
+{\addcontentsline{toc}{chapter}{參考文獻}
+\renewcommand{\bibname}{參考文獻}}
+{\addcontentsline{toc}{chapter}{References}
+\renewcommand{\bibname}{References}}
+
+\bibliographystyle{IEEEtran}
+\bibliography{ref}
+}
+
+\appendix
+\input{Sections/appendix} \newpage
+
+\balance
+\end{document}

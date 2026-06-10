@@ -1,5 +1,22 @@
 import type { DesignSystem, Page, SlideMeta } from '@open-slide/core';
 
+const systemReflexPreview = new URL(
+  '../../assets/hfrvla-paper/system1-system2-wrist-reflex-preview.png',
+  import.meta.url,
+).href;
+const wristFeedbackPreview = new URL(
+  '../../assets/hfrvla-paper/wrist-feedback-rollout-preview.png',
+  import.meta.url,
+).href;
+const dinoPatchPreview = new URL(
+  '../../assets/hfrvla-paper/dino-patch-heatmap-preview.png',
+  import.meta.url,
+).href;
+const asyncPlannerDelaySummaryPlot = new URL(
+  '../../assets/hfrvla-paper/async-timestep-planner-delay-summary.png',
+  import.meta.url,
+).href;
+
 export const design: DesignSystem = {
   palette: {
     bg: '#08110f',
@@ -1239,20 +1256,23 @@ type SuccessDatum = {
 };
 
 const actionStepComparison: SuccessDatum[] = [
-  { k: 2, hfrvla: 82, baseline: 72, hfrvlaText: '41/50', baselineText: '36/50' },
-  { k: 4, hfrvla: 76, baseline: 62, hfrvlaText: '38/50', baselineText: '31/50' },
-  { k: 8, hfrvla: 68, baseline: 64, hfrvlaText: '34/50', baselineText: '32/50' },
-  { k: 16, hfrvla: 68, baseline: 68, hfrvlaText: '34/50', baselineText: '34/50' },
-  { k: 32, hfrvla: 52, baseline: 62, hfrvlaText: '26/50', baselineText: '31/50' },
+  { k: 1, hfrvla: 75, baseline: 79, hfrvlaText: '75/100', baselineText: '79/100' },
+  { k: 2, hfrvla: 79, baseline: 72, hfrvlaText: '79/100', baselineText: '72/100' },
+  { k: 4, hfrvla: 80, baseline: 65, hfrvlaText: '80/100', baselineText: '65/100' },
+  { k: 8, hfrvla: 71, baseline: 60, hfrvlaText: '71/100', baselineText: '60/100' },
+  { k: 16, hfrvla: 75, baseline: 57, hfrvlaText: '75/100', baselineText: '57/100' },
+  { k: 32, hfrvla: 59, baseline: 50, hfrvlaText: '59/100', baselineText: '50/100' },
+  { k: 50, hfrvla: 53, baseline: 40, hfrvlaText: '53/100', baselineText: '40/100' },
 ];
 
 const matchedChunkComparison: SuccessDatum[] = [
-  { k: 2, hfrvla: 76, baseline: 66, hfrvlaText: '38/50', baselineText: '33/50' },
-  { k: 4, hfrvla: 62, baseline: 68, hfrvlaText: '31/50', baselineText: '34/50' },
-  { k: 8, hfrvla: 72, baseline: 58, hfrvlaText: '36/50', baselineText: '29/50' },
-  { k: 16, hfrvla: 64, baseline: 60, hfrvlaText: '32/50', baselineText: '30/50' },
-  { k: 32, hfrvla: 54, baseline: 52, hfrvlaText: '27/50', baselineText: '26/50' },
-  { k: 50, hfrvla: 44, baseline: 40, hfrvlaText: '22/50', baselineText: '20/50' },
+  { k: 1, hfrvla: 73, baseline: 77, hfrvlaText: '73/100', baselineText: '77/100' },
+  { k: 2, hfrvla: 71, baseline: 77, hfrvlaText: '71/100', baselineText: '77/100' },
+  { k: 4, hfrvla: 73, baseline: 65, hfrvlaText: '73/100', baselineText: '65/100' },
+  { k: 8, hfrvla: 65, baseline: 62, hfrvlaText: '65/100', baselineText: '62/100' },
+  { k: 16, hfrvla: 60, baseline: 54, hfrvlaText: '60/100', baselineText: '54/100' },
+  { k: 32, hfrvla: 60, baseline: 51, hfrvlaText: '60/100', baselineText: '51/100' },
+  { k: 50, hfrvla: 53, baseline: 40, hfrvlaText: '53/100', baselineText: '40/100' },
 ];
 
 type AlphaClipRow = {
@@ -1455,16 +1475,16 @@ const EvidenceSnapshot: Page = () => (
       這頁只摘要 registry-backed LIBERO-Spatial rows；完整成功率比較在後面兩張折線圖與表格。Paper 正文先保留方法大架構，等全部實驗完成後再寫細節主張。
     </Note>
     <div className="fade-3" style={{ marginTop: 34, display: 'grid', gridTemplateColumns: '1.12fr .88fr', gap: 24, alignItems: 'start' }}>
-      <CodeBlock size={17} lineHeight={1.18} padding="24px 28px">{`seed=42, LIBERO-Spatial, 50 episodes
+      <CodeBlock size={17} lineHeight={1.18} padding="24px 28px">{`seed=42, LIBERO-Spatial, 100 episodes, batch=3
 sweep          policy                    plan exec   success
-action-step    HFRVLA 30k alpha=.5       50   2      41/50
-action-step    SmolVLA                   50   2      36/50
-action-step    HFRVLA 30k alpha=.5       50   8      34/50
-action-step    SmolVLA                   50   8      32/50
-matched chunk  HFRVLA 30k alpha=.5       8    8      36/50
-matched chunk  SmolVLA                   8    8      29/50
-matched chunk  HFRVLA 30k alpha=.5       50   50     22/50
-matched chunk  SmolVLA                   50   50     20/50`}</CodeBlock>
+plan50 exec    HFRVLA gen alpha=.5 d=.2  50   4      80/100
+plan50 exec    SmolVLA                   50   4      65/100
+plan50 exec    HFRVLA gen alpha=.5 d=.2  50   16     75/100
+plan50 exec    SmolVLA                   50   16     57/100
+matched chunk  HFRVLA gen alpha=.5 d=.2  8    8      65/100
+matched chunk  SmolVLA                   8    8      62/100
+matched chunk  HFRVLA gen alpha=.5 d=.2  50   50     53/100
+matched chunk  SmolVLA                   50   50     40/100`}</CodeBlock>
       <div style={{ display: 'grid', gap: 18 }}>
         <Card title="Dashboard read" body="目前只說明比較趨勢，不把任何 success gap 寫成最終 paper claim。" tone={colors.accent} />
         <Card title="Main risk" body="plan=exec=50 時兩邊都掉很多；這仍是 calibration / target-deployment mismatch 的診斷重點。" tone={colors.rose} />
@@ -1478,7 +1498,7 @@ const ActionStepBaselineComparison: Page = () => (
   <PageShell label="Success comparison">
     <Heading maxWidth={1580}>固定 plan=50：success rate vs SmolVLA baseline</Heading>
     <Note width={1500}>
-      LIBERO-Spatial，seed=42，50 episodes/setting。X 軸是 execution/replan interval K；slow planner 固定產生 50-step chunk。
+      LIBERO-Spatial，seed=42，100 episodes/setting，eval batch size=3。X 軸是 execution/replan interval K；slow planner 固定產生 50-step chunk。
     </Note>
     <div className="fade-3" style={{ marginTop: 26, display: 'grid', gridTemplateColumns: '920px 1fr', gap: 24, alignItems: 'start' }}>
       <SuccessLineChart title="Action-step sweep: plan=50, exec/replan=K" data={actionStepComparison} />
@@ -1491,7 +1511,7 @@ const MatchedChunkBaselineComparison: Page = () => (
   <PageShell label="Success comparison">
     <Heading maxWidth={1580}>Matched chunk：success rate vs SmolVLA baseline</Heading>
     <Note width={1500}>
-      LIBERO-Spatial，seed=42，50 episodes/setting。X 軸是 matched K，其中 planning=execution=replan=K。
+      LIBERO-Spatial，seed=42，100 episodes/setting，eval batch size=3。X 軸是 matched K，其中 planning=execution=replan=K。
     </Note>
     <div className="fade-3" style={{ marginTop: 26, display: 'grid', gridTemplateColumns: '920px 1fr', gap: 24, alignItems: 'start' }}>
       <SuccessLineChart title="Matched chunk sweep: plan=exec=replan=K" data={matchedChunkComparison} />
@@ -1504,7 +1524,7 @@ const ActiveN50Calibration: Page = () => (
   <PageShell label="n=50 calibration result">
     <Heading maxWidth={1580}>n_action_steps=50：alpha/clip sweep 結果</Heading>
     <Note width={1500}>
-      LIBERO-Spatial，seed=42，50 episodes/setting，planning=execution=replan=50，eval batch size=3。Baseline reference：matched SmolVLA K=50 是 20/50 = 40%。
+      LIBERO-Spatial，seed=42，50 episodes/setting，planning=execution=replan=50，eval batch size=3。Baseline reference：matched SmolVLA K=50 是 40/100 = 40% in the 10x10 spatial run。
     </Note>
     <div className="fade-3" style={{ marginTop: 24, display: 'grid', gridTemplateColumns: '1.15fr .85fr', gap: 22, alignItems: 'start' }}>
       <div>
@@ -1518,6 +1538,71 @@ const ActiveN50Calibration: Page = () => (
         <MiniCard title="Best settings" body="最高是 28/50 = 56%：alpha=.5 clip=.2，以及 alpha=1.0 clip=.1；兩者 effective cap 都是 0.1。" tone={colors.accent} />
         <MiniCard title="Useful conclusion" body="最佳 56% 比 SmolVLA K=50 baseline 高 16 pts；但長 chunk 不是越大 residual 越好，較大 cap 會 over-correct。" tone={colors.gold} />
         <MiniCard title="No-limit result" body="delta=999 在 alpha=.5/.75/1.0 時掉到 16%、4%、2%；clip 是必要 deployment constraint。" tone={colors.rose} />
+      </div>
+    </div>
+  </PageShell>
+);
+
+const AsyncTimestepPlannerDelayProtocol: Page = () => (
+  <PageShell label="Async-timestep protocol">
+    <Heading maxWidth={1580}>新的 async_timestep：server 只跑 slow planner，client 每步做 wrist residual</Heading>
+    <Note width={1500}>
+      Phase 1 用 deterministic control timestep 模擬 latency；不修改 LeRobot source。Slow planner observe 的時間、chunk ready 的時間、以及從 chunk 第幾個 index 開始執行都寫入 debug stats。
+    </Note>
+    <div className="fade-3" style={{ marginTop: 24, display: 'grid', gridTemplateColumns: '1.08fr .92fr', gap: 24, alignItems: 'start' }}>
+      <div style={{ background: colors.panel, border: `1px solid ${colors.line}`, borderRadius: 10, padding: '22px 26px' }}>
+        <CodeBlock size={20} lineHeight={1.18} padding="22px 24px">{`async_timestep semantics
+  request step t:
+    observe o_t
+    slow planner starts A_t = SmolVLA(o_t)
+
+  ready step t+d:
+    A_t arrives
+    active queue is replaced immediately
+    executor starts from A_t[d], not A_t[0]
+
+  every control step:
+    current wrist/state -> delta_a
+    a_final = a_base + alpha * clip(delta_a)
+
+main phase-1 grid
+  N = async_request_interval_steps = 8
+  d = planner_delay_steps = 0,1,2,3,4
+  constraint: N + d <= execution = 16`}</CodeBlock>
+      </div>
+      <div style={{ display: 'grid', gap: 14 }}>
+        <MiniCard title="Controlled point" body="新的 chunk 是在 ready step t+d 取代 queue；開始計算的 observation 是 request step t 的 o_t。" tone={colors.gold} />
+        <MiniCard title="Controlled index" body="delay=d 時第一個執行的 base action 是 A_t[d]；k_idx_norm 使用 d,d+1,... 的 absolute chunk index。" tone={colors.accent} />
+        <MiniCard title="Split-system meaning" body="server 只代表 frozen slow planner；client 保留 HFRVLA fast residual 和 safety merge，不走 LeRobot RTC。" tone={colors.blue} />
+        <MiniCard title="Debug fields" body="async_request_count、async_activation_count、chunk_start_index、dropped_old_queue_steps、event trace 會進 CSV/registry。" tone={colors.violet} />
+      </div>
+    </div>
+  </PageShell>
+);
+
+const AsyncTimestepPlannerDelayResult: Page = () => (
+  <PageShell label="Async-timestep result">
+    <Heading maxWidth={1580}>Async-timestep result：wrist residual 阻止 disable-fast 的 delay drop</Heading>
+    <Note width={1500}>
+      LIBERO-Spatial，100 episodes/row，N=8，plan=50，exec=16，delay=0..4。這是正式 planner-delay protocol。
+    </Note>
+    <div className="fade-3" style={{ marginTop: 22, display: 'grid', gridTemplateColumns: '1.05fr .95fr', gap: 24, alignItems: 'start' }}>
+      <div style={{ background: '#ffffff', border: `1px solid ${colors.lineStrong}`, borderRadius: 10, padding: '18px 20px' }}>
+        <img
+          src={asyncPlannerDelaySummaryPlot}
+          alt="Async-timestep planner-delay summary for HFRVLA and disable-fast"
+          style={{ width: '100%', height: 565, objectFit: 'contain', display: 'block' }}
+        />
+      </div>
+      <div style={{ display: 'grid', gap: 13 }}>
+        <MiniCard title="HFRVLA" body="Success = 64、68、72、68、66%。相對 d=0 是 +0、+4、+8、+4、+2 pp；沒有出現 0..4 delay degradation。" tone={colors.accent} />
+        <MiniCard title="Disable-fast" body="Success = 68、64、62、61、56%。相對 d=0 到 d=4 是 -12 pp，顯示 slow chunk latency 對 base-only execution 有明顯傷害。" tone={colors.rose} />
+        <MiniCard title="Margin" body="HFRVLA - disable-fast = -4、+4、+10、+7、+10 pp；d=1..4 平均 margin 是 +7.75 pp。" tone={colors.gold} />
+        <MiniCard title="Timing check" body="async_chunk_start_index_mean 精準等於 d=0..4；代表實際執行確實從 A_t[d] 開始。" tone={colors.blue} />
+        <CodeBlock size={13} lineHeight={1.08} padding="13px 15px">{`source artifacts
+outputs/async_timestep_planner_delay_eval_sweep/results.csv
+outputs/async_timestep_planner_delay_eval_sweep/analysis.md
+paper/notes/async_timestep_planner_delay_eval_results.md`}</CodeBlock>
       </div>
     </div>
   </PageShell>
@@ -1537,7 +1622,7 @@ const EvalRegistry: Page = () => (
 
   eval_results_master.csv
     compact long/tidy table
-    229 rows, 37 columns
+    267 data rows, 52 columns
     dashboard uses only stable evidence
 
 scripts/build_eval_results_master.py
@@ -1545,7 +1630,7 @@ scripts/build_eval_results_master.py
   expands sweep/profile metadata
   keeps paper-facing CSV compact`}</CodeBlock>
       <div style={{ display: 'grid', gap: 18 }}>
-        <MiniCard title="Current sources" body="11 manifest rows；master check 目前為 229 rows，包含 derived combined rows。" tone={colors.accent} />
+        <MiniCard title="Current sources" body="18 manifest rows；master check 目前為 267 data rows，只保留 async planner-delay sweep。" tone={colors.accent} />
         <MiniCard title="Do not hand-edit" body="master CSV 是 build artifact；未來不同 training params 都透過 sources.csv 記錄。" tone={colors.rose} />
         <MiniCard title="Paper use" body="HTML 不再保留舊 raw result pages；paper table 從 master CSV filter/groupby。" tone={colors.gold} />
       </div>
@@ -1560,13 +1645,278 @@ const ExperimentMatrix: Page = () => (
       Matrix 只記實驗設計與狀態，不放 decision rule。跑完後把正式結果納入 registry，再回來更新 dashboard。
     </Note>
     <div className="fade-3" style={{ marginTop: 32, width: 1640 }}>
-      <CodeBlock size={15} lineHeight={1.13} padding="22px 24px">{`experiment_id                  variable                 values / plan                         fixed_controls                                      status
+      <CodeBlock size={14} lineHeight={1.1} padding="22px 24px">{`experiment_id                  variable                 values / plan                         fixed_controls                                      status
 n50_alpha_clip_spatial_50eps   alpha x delta_max        best 56% at effective cap=.1        plan=exec=replan=50; spatial 50eps; batch=3        completed
-delayed_chunk_age_target       residual target          current-step vs stale chunk-age       same FWR-v2 architecture                         planned
+async_timestep_delay_phase1    async planner delay      N=8; d=0..4; plan=50 exec=16        hfrvla vs disable-fast; spatial 100eps           completed
+target_alignment_ablation      residual target          raw residual vs final-action vs age   same FWR architecture and deploy merge            planned
 time_age_features              timing features          k_norm, sin/cos, age_norm, latency    same checkpoint/data pipeline                    planned
+runtime_instrumentation        deployment logs          fast_applied_ratio, hook misses       latency, delta_norm, clip_fraction, safety hits    planned
+real_robot_tabletop_validation  hardware rollout         2-3 tasks; 10-20 trials/method/task  matched task text/cameras where possible          planned
+dino_wrist_visualization       visual diagnosis         patch heatmap + occlusion sensitivity diagnostic only; not a causal claim by itself    planned
 latent_context_ablation        slow context             keep/remove z_goal,z_phase            wrist/state/a_base fixed                         planned
-tool_frame_residual            target frame             raw 7D vs tool-frame residual          same deploy merge                                planned
-alpha_training_alignment       train/deploy alpha       train loss alpha aligned to eval alpha n=50 calibration result as guide                planned`}</CodeBlock>
+tool_frame_residual            target frame             raw 7D vs tool-frame residual          same deploy merge                                planned`}</CodeBlock>
+    </div>
+  </PageShell>
+);
+
+const CompactDelayCard = ({
+  title,
+  body,
+  tone,
+}: {
+  title: string;
+  body: string;
+  tone: string;
+}) => (
+  <div
+    style={{
+      border: `1px solid ${colors.line}`,
+      background: colors.panel,
+      borderRadius: 10,
+      padding: '13px 18px 15px',
+      display: 'grid',
+      gap: 7,
+    }}
+  >
+    <div style={{ fontSize: 21, fontWeight: 850, color: tone }}>{title}</div>
+    <div style={{ fontSize: 18, lineHeight: 1.24, color: colors.muted }}>{body}</div>
+  </div>
+);
+
+const DelayTimingSchematic: Page = () => (
+  <PageShell label="Delay timing">
+    <Heading maxWidth={1560}>Planner delay 要畫成 observe / compute / execute 的時間切分</Heading>
+    <Note width={1500}>
+      Delay 定義為 slow VLA chunk generation latency；wrist residual 不延遲，仍在每個 control step 使用 current wrist feedback。
+    </Note>
+    <div className="fade-3" style={{ marginTop: 28, display: 'grid', gridTemplateColumns: '1.18fr .82fr', gap: 24, alignItems: 'start' }}>
+      <div style={{ background: colors.panel, border: `1px solid ${colors.line}`, borderRadius: 10, padding: '20px 24px 24px' }}>
+        <svg viewBox="0 0 1040 560" width="100%" height="520" role="img" aria-label="HFRVLA planner delay timing schematic">
+          <defs>
+            <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill={colors.accent} />
+            </marker>
+            <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill={colors.blue} />
+            </marker>
+            <marker id="arrow-gold" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill={colors.gold} />
+            </marker>
+          </defs>
+
+          {[170, 450, 890].map((x, i) => (
+            <g key={x}>
+              <line x1={x} y1={58} x2={x} y2={500} stroke={i === 1 ? colors.gold : colors.lineStrong} strokeWidth={i === 1 ? 2 : 1.4} strokeDasharray={i === 0 ? '0' : '8 8'} />
+            </g>
+          ))}
+          <line x1={130} y1={500} x2={970} y2={500} stroke={colors.lineStrong} strokeWidth={2} markerEnd="url(#arrow-green)" />
+          <text x={170} y={532} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={22}>t</text>
+          <text x={450} y={532} textAnchor="middle" fill={colors.gold} fontFamily={font.mono} fontSize={22}>t+d</text>
+          <text x={890} y={532} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={22}>t+d+K</text>
+
+          <text x={28} y={112} fill={colors.gold} fontWeight={850} fontSize={23}>Slow VLA</text>
+          <text x={28} y={140} fill={colors.muted} fontSize={17}>System-2 planner</text>
+          <text x={28} y={262} fill={colors.blue} fontWeight={850} fontSize={23}>Robot</text>
+          <text x={28} y={290} fill={colors.muted} fontSize={17}>execution queue</text>
+          <text x={28} y={414} fill={colors.accent} fontWeight={850} fontSize={23}>Wrist reflex</text>
+          <text x={28} y={442} fill={colors.muted} fontSize={17}>System-1 correction</text>
+
+          <rect x={138} y={88} width={116} height={54} rx={9} fill="rgba(247,198,106,.16)" stroke={colors.gold} strokeWidth={2} />
+          <text x={196} y={110} textAnchor="middle" fill={colors.gold} fontFamily={font.mono} fontSize={15}>sample</text>
+          <text x={196} y={130} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={17}>o_t</text>
+
+          <rect x={258} y={88} width={282} height={54} rx={9} fill="rgba(119,183,255,.14)" stroke={colors.blue} strokeWidth={2} />
+          <text x={399} y={110} textAnchor="middle" fill={colors.blue} fontFamily={font.mono} fontSize={15}>slow compute window</text>
+          <text x={399} y={130} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={17}>generate chunk A_t</text>
+          <line x1={254} y1={115} x2={258} y2={115} stroke={colors.gold} strokeWidth={2} markerEnd="url(#arrow-gold)" />
+
+          <polygon points="450,74 494,115 450,156 406,115" fill="rgba(50,211,153,.16)" stroke={colors.accent} strokeWidth={2} />
+          <text x={450} y={111} textAnchor="middle" fill={colors.accent} fontFamily={font.mono} fontSize={15}>A_t</text>
+          <text x={450} y={132} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={14}>ready</text>
+
+          <rect x={150} y={230} width={274} height={58} rx={9} fill="rgba(255,124,154,.12)" stroke={colors.rose} strokeWidth={2} />
+          <text x={287} y={254} textAnchor="middle" fill={colors.rose} fontFamily={font.mono} fontSize={16}>previous queue</text>
+          <text x={287} y={278} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={16}>or hold-last fallback</text>
+          <rect x={450} y={230} width={420} height={58} rx={9} fill="rgba(50,211,153,.13)" stroke={colors.accent} strokeWidth={2} />
+          {['a^0', 'a^1', 'a^2', '...', 'a^{K-1}'].map((label, idx) => (
+            <g key={label}>
+              <rect x={470 + idx * 76} y={244} width={58} height={30} rx={6} fill="rgba(8,17,15,.58)" stroke={colors.lineStrong} />
+              <text x={499 + idx * 76} y={264} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={15}>{label}</text>
+            </g>
+          ))}
+          <text x={660} y={314} textAnchor="middle" fill={colors.muted} fontFamily={font.mono} fontSize={16}>execute chunk predicted from o_t</text>
+
+          <line x1={170} y1={346} x2={450} y2={346} stroke={colors.rose} strokeWidth={3} markerEnd="url(#arrow-blue)" />
+          <text x={310} y={336} textAnchor="middle" fill={colors.rose} fontFamily={font.mono} fontSize={17}>prediction-execution offset d</text>
+
+          {Array.from({ length: 8 }).map((_, idx) => {
+            const x = 154 + idx * 108;
+            return (
+              <g key={idx}>
+                <circle cx={x} cy={410} r={12} fill="rgba(50,211,153,.18)" stroke={colors.accent} strokeWidth={2} />
+                <text x={x} y={448} textAnchor="middle" fill={colors.muted} fontFamily={font.mono} fontSize={13}>w{idx === 0 ? '_t' : `_${idx}`}</text>
+                <line x1={x} y1={394} x2={x} y2={292} stroke={colors.accent} strokeWidth={1.5} strokeDasharray="5 7" markerEnd="url(#arrow-green)" />
+              </g>
+            );
+          })}
+          <rect x={360} y={388} width={304} height={48} rx={9} fill="rgba(50,211,153,.12)" stroke={colors.accent} strokeWidth={2} />
+          <text x={512} y={418} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={18}>a_final = a_base + alpha clip(delta a)</text>
+        </svg>
+      </div>
+      <div style={{ display: 'grid', gap: 9 }}>
+        <CompactDelayCard title="Delay semantics" body="planner_delay_steps=d：slow VLA 在 t 取樣 observation，chunk 到 t+d 才進 queue。" tone={colors.gold} />
+        <CompactDelayCard title="Main sweep" body="plan=50, exec/replan=16；delay={0,1,2,4,8}；Spatial 10 eps/task。" tone={colors.accent} />
+        <CompactDelayCard title="Fallback" body="主實驗 hold-last-action，另記 fallback_steps；zero-action 只做 ablation。" tone={colors.rose} />
+        <CompactDelayCard title="Arms" body="SmolVLA、HFRVLA、HFRVLA disable-fast，用第三組隔離 wrist residual。" tone={colors.blue} />
+        <CodeBlock size={13} lineHeight={1.08} padding="13px 16px">{`metrics
+success_rate
+planner_delay_steps
+fallback_steps_total / mean
+slow_replan_count
+fast_latency_ms_mean
+fast_applied_ratio
+delta_norm_mean
+delta_clip_fraction_mean
+k_mean`}</CodeBlock>
+      </div>
+    </div>
+  </PageShell>
+);
+
+const DelayTimingProblemDefinition: Page = () => (
+  <PageShell label="Delay timing">
+    <Heading maxWidth={1580}>Inference delay：A_t 在 t 生成，t+d 才執行</Heading>
+    <Note width={1500}>
+      slow VLA 用舊 observation 產生 action chunk；HFRVLA 測試 wrist feedback 是否能修正這個 stale chunk。
+    </Note>
+    <div className="fade-3" style={{ marginTop: 22, width: 1640 }}>
+      <div style={{ background: colors.panel, border: `1px solid ${colors.line}`, borderRadius: 10, padding: '20px 28px 24px' }}>
+        <svg viewBox="0 0 1600 560" width="100%" height="500" role="img" aria-label="HFRVLA planner delay problem definition">
+          <defs>
+            <marker id="delay-arrow-green" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill={colors.accent} />
+            </marker>
+            <marker id="delay-arrow-gold" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill={colors.gold} />
+            </marker>
+            <marker id="delay-arrow-rose" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill={colors.rose} />
+            </marker>
+          </defs>
+
+          {[260, 760, 1320].map((x, i) => (
+            <g key={x}>
+              <line x1={x} y1={54} x2={x} y2={502} stroke={i === 1 ? colors.gold : colors.lineStrong} strokeWidth={i === 1 ? 2.4 : 1.4} strokeDasharray={i === 0 ? '0' : '8 8'} />
+            </g>
+          ))}
+          <line x1={206} y1={502} x2={1460} y2={502} stroke={colors.lineStrong} strokeWidth={2} markerEnd="url(#delay-arrow-green)" />
+          <text x={260} y={538} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={23}>t</text>
+          <text x={760} y={538} textAnchor="middle" fill={colors.gold} fontFamily={font.mono} fontSize={23}>t+d</text>
+          <text x={1320} y={538} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={23}>t+d+K</text>
+
+          <text x={34} y={92} fill={colors.gold} fontWeight={850} fontSize={26}>Observation</text>
+          <text x={34} y={122} fill={colors.muted} fontSize={18}>what planner sees</text>
+          <text x={34} y={214} fill={colors.blue} fontWeight={850} fontSize={26}>Slow VLA</text>
+          <text x={34} y={244} fill={colors.muted} fontSize={18}>System-2 planner</text>
+          <text x={34} y={346} fill={colors.rose} fontWeight={850} fontSize={26}>Robot</text>
+          <text x={34} y={376} fill={colors.muted} fontSize={18}>what executes</text>
+          <text x={34} y={452} fill={colors.accent} fontWeight={850} fontSize={26}>Wrist reflex</text>
+          <text x={34} y={482} fill={colors.muted} fontSize={18}>current feedback</text>
+
+          <rect x={220} y={62} width={240} height={74} rx={9} fill="rgba(247,198,106,.14)" stroke={colors.gold} strokeWidth={2} />
+          <text x={340} y={92} textAnchor="middle" fill={colors.gold} fontFamily={font.mono} fontSize={18}>observe</text>
+          <text x={340} y={118} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={22}>o_t</text>
+
+          <rect x={742} y={62} width={260} height={74} rx={9} fill="rgba(255,124,154,.11)" stroke={colors.rose} strokeWidth={2} />
+          <text x={872} y={92} textAnchor="middle" fill={colors.rose} fontFamily={font.mono} fontSize={18}>world has moved</text>
+          <text x={872} y={118} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={22}>state at t+d</text>
+          <line x1={460} y1={99} x2={742} y2={99} stroke={colors.rose} strokeWidth={2.5} strokeDasharray="8 8" markerEnd="url(#delay-arrow-rose)" />
+
+          <rect x={260} y={184} width={500} height={70} rx={9} fill="rgba(119,183,255,.14)" stroke={colors.blue} strokeWidth={2} />
+          <text x={510} y={213} textAnchor="middle" fill={colors.blue} fontFamily={font.mono} fontSize={18}>slow compute window</text>
+          <text x={510} y={238} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={21}>generate A_t from o_t</text>
+          <line x1={760} y1={219} x2={862} y2={219} stroke={colors.gold} strokeWidth={2.4} markerEnd="url(#delay-arrow-gold)" />
+          <rect x={882} y={184} width={156} height={70} rx={9} fill="rgba(50,211,153,.14)" stroke={colors.accent} strokeWidth={2} />
+          <text x={960} y={213} textAnchor="middle" fill={colors.accent} fontFamily={font.mono} fontSize={18}>A_t ready</text>
+          <text x={960} y={238} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={18}>enqueue</text>
+
+          <rect x={260} y={318} width={500} height={76} rx={9} fill="rgba(255,124,154,.12)" stroke={colors.rose} strokeWidth={2} />
+          <text x={510} y={348} textAnchor="middle" fill={colors.rose} fontFamily={font.mono} fontSize={19}>previous queue / hold-last</text>
+          <text x={510} y={374} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={18}>robot cannot use A_t yet</text>
+          <rect x={760} y={318} width={560} height={76} rx={9} fill="rgba(50,211,153,.13)" stroke={colors.accent} strokeWidth={2.2} />
+          {['a^0', 'a^1', 'a^2', '...', 'a^{K-1}'].map((label, idx) => (
+            <g key={label}>
+              <rect x={804 + idx * 96} y={338} width={72} height={34} rx={6} fill="rgba(8,17,15,.58)" stroke={colors.lineStrong} />
+              <text x={840 + idx * 96} y={360} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={17}>{label}</text>
+            </g>
+          ))}
+          <text x={1040} y={302} textAnchor="middle" fill={colors.rose} fontWeight={850} fontSize={25}>A_t is stale when it starts executing</text>
+          <line x1={340} y1={154} x2={760} y2={154} stroke={colors.rose} strokeWidth={3} strokeDasharray="10 9" markerEnd="url(#delay-arrow-rose)" />
+          <text x={550} y={178} textAnchor="middle" fill={colors.rose} fontFamily={font.mono} fontSize={20}>staleness = d control steps</text>
+
+          {Array.from({ length: 7 }).map((_, idx) => {
+            const x = 776 + idx * 78;
+            return (
+              <g key={idx}>
+                <circle cx={x} cy={418} r={11} fill="rgba(50,211,153,.18)" stroke={colors.accent} strokeWidth={2} />
+                <line x1={x} y1={406} x2={x} y2={394} stroke={colors.accent} strokeWidth={1.6} strokeDasharray="5 7" markerEnd="url(#delay-arrow-green)" />
+              </g>
+            );
+          })}
+          <rect x={260} y={430} width={430} height={56} rx={9} fill="rgba(50,211,153,.12)" stroke={colors.accent} strokeWidth={2} />
+          <text x={475} y={464} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={20}>current wrist {'->'} delta a every step</text>
+          <line x1={690} y1={458} x2={768} y2={458} stroke={colors.accent} strokeWidth={2.5} markerEnd="url(#delay-arrow-green)" />
+          <rect x={790} y={430} width={500} height={56} rx={9} fill="rgba(50,211,153,.12)" stroke={colors.accent} strokeWidth={2} />
+          <text x={1040} y={464} textAnchor="middle" fill={colors.text} fontFamily={font.mono} fontSize={20}>a_final = a_base + alpha clip(delta a)</text>
+        </svg>
+      </div>
+    </div>
+  </PageShell>
+);
+
+const FigureConceptPreviews: Page = () => (
+  <PageShell label="Figure concepts">
+    <Heading maxWidth={1560}>可審核的概念圖：只當 placeholder，不當實驗截圖</Heading>
+    <Note width={1460}>
+      這三張由 imagegen 產生，用來先檢查 paper visual direction。正式稿建議重畫成 vector method diagram，或替換成真實 robot rollout / wrist-frame visualization。
+    </Note>
+    <div className="fade-3" style={{ marginTop: 30, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 18 }}>
+      {[
+        {
+          title: 'System-1 wrist reflex',
+          src: systemReflexPreview,
+          body: 'Slow frozen planner + local wrist residual；適合當 architecture schematic 的構圖參考。',
+          tone: colors.accent,
+        },
+        {
+          title: 'Wrist feedback rollout',
+          src: wristFeedbackPreview,
+          body: '展示 wrist inset 與 correction arrow；適合 real-robot validation slide 的構圖參考。',
+          tone: colors.gold,
+        },
+        {
+          title: 'DINO patch heatmap',
+          src: dinoPatchPreview,
+          body: '只作 diagnostic visualization；若要寫 causal claim，需要 occlusion/sensitivity ablation。',
+          tone: colors.blue,
+        },
+      ].map((item) => (
+        <div key={item.title} style={{ background: colors.panel, border: `1px solid ${colors.line}`, borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ height: 262, background: '#101817' }}>
+            <img src={item.src} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          </div>
+          <div style={{ padding: '18px 20px 22px' }}>
+            <div style={{ fontSize: 23, fontWeight: 850, color: item.tone }}>{item.title}</div>
+            <p style={{ margin: '10px 0 0', fontSize: 19, lineHeight: 1.35, color: colors.muted }}>{item.body}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+    <div className="fade-4" style={{ marginTop: 26, width: 1500 }}>
+      <CodeBlock size={18} lineHeight={1.2} padding="22px 28px">{`asset paths
+docs/assets/hfrvla-paper/system1-system2-wrist-reflex-preview.png
+docs/assets/hfrvla-paper/wrist-feedback-rollout-preview.png
+docs/assets/hfrvla-paper/dino-patch-heatmap-preview.png`}</CodeBlock>
     </div>
   </PageShell>
 );
@@ -1575,18 +1925,21 @@ const PaperWritingAnchors: Page = () => (
   <PageShell label="Paper anchors">
     <Heading maxWidth={1560}>之後寫論文時要抓住的資訊</Heading>
     <div className="fade-2" style={{ marginTop: 48, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 22, width: 1580 }}>
-      <Card title="Core claim" body="一個小型 wrist-camera residual module 可以在 frozen SmolVLA action chunks 上做 fast correction，不需要重訓 slow planner。" tone={colors.accent} />
-      <Card title="Comparison framing" body="跟 A2C2 類方法對照時，強調 wrist visual correction 的簡化；但不要說整個 policy 只看 wrist，因為仍使用 slow planner context。" tone={colors.gold} />
+      <Card title="Core claim" body="一個小型 wrist-feedback residual module 可以在 frozen SmolVLA action chunks 上做局部反射式 correction，不需要重訓 slow planner。" tone={colors.accent} />
+      <Card title="System 1 / System 2" body="把 slow SmolVLA 寫成 System-2-like planner，把 wrist residual 寫成局部 System-1-like reflex；避免宣稱 full dual-system VLA。" tone={colors.gold} />
+      <Card title="Comparison framing" body="A2C2 是 closest related work，不寫直接勝負比較；real robot rollout 是額外 hardware validation，不是核心 novelty。" tone={colors.blue} />
       <Card title="Baseline discipline" body="SmolVLA baseline 必須用相同 planning/execution override 比較；default n=1 只能作上限參考，不是 matched baseline。" tone={colors.blue} />
       <Card title="Evidence source" body="數字引用 `eval_results_master.csv`；raw outputs 和 eval logs 只作追溯，不作手抄表格來源。" tone={colors.rose} />
+      <Card title="Incomplete experiments" body="Inference delay、chunk-age target、runtime instrumentation、real robot rollout 與 DINO wrist visualization 是 paper 完整度的主要缺口。" tone={colors.rose} />
     </div>
     <div className="fade-3" style={{ marginTop: 34, width: 1500 }}>
       <CodeBlock size={22} lineHeight={1.25} padding="24px 30px">{`write-up checklist
 1. State the two chunk axes explicitly:
    planning_chunk_size vs execution_chunk_size / replan_interval_steps.
-2. In this HTML dashboard, report LIBERO-Spatial only; keep other suite rows in the registry.
-3. Record each new training run in experiments/eval_registry/sources.csv.
-4. Keep docs/training_presentation.html, paper/notes, and memory synchronized.`}</CodeBlock>
+2. Frame wrist feedback as a local reflex, not as a full wrist-only policy.
+3. Add inference-delay stress before strong reactivity claims.
+4. Add real-robot rollouts before claiming hardware validation.
+5. Record each new run in experiments/eval_registry/sources.csv.`}</CodeBlock>
     </div>
   </PageShell>
 );
@@ -1680,7 +2033,11 @@ export default [
   MatchedChunkBaselineComparison,
   ActiveN50Calibration,
   ExperimentMatrix,
+  AsyncTimestepPlannerDelayProtocol,
+  AsyncTimestepPlannerDelayResult,
+  DelayTimingProblemDefinition,
   EvalRegistry,
+  FigureConceptPreviews,
   PaperWritingAnchors,
   Knobs,
   Automation,

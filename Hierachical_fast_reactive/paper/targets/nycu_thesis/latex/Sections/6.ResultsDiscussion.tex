@@ -1,0 +1,142 @@
+\chapter{結果與討論}
+\label{ch:results}
+
+\section{Synchronous plan=50 execution/replan sweep}
+
+圖~\ref{fig:plan50_sweep} 與表~\ref{tab:plan50_sweep} 顯示 LIBERO-Spatial plan=50 execution/replan sweep。此 sweep 固定 slow planner 一次產生 50 actions，並改變 execution/replan interval $K$。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.76\textwidth]{fig2_plan50_execution_sweep.png}
+  \caption{LIBERO-Spatial synchronous plan=50 execution/replan sweep。除 planner-delay experiment 外，本文主 sweeps 均為 synchronous inference。}
+  \label{fig:plan50_sweep}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Plan=50 execution/replan sweep exact success rates。每列 100 episodes。}
+  \label{tab:plan50_sweep}
+  \begin{tabular}{rrrr}
+    \toprule
+    $K$ & \smolvla{} & \method{} & Difference \\
+    \midrule
+    1  & 79\% & 75\% & -4 \\
+    2  & 72\% & 79\% & +7 \\
+    4  & 65\% & 80\% & +15 \\
+    8  & 60\% & 71\% & +11 \\
+    16 & 57\% & 75\% & +18 \\
+    32 & 50\% & 59\% & +9 \\
+    50 & 40\% & 53\% & +13 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+結果顯示 \method{} 並非在所有 setting 都優於 baseline。當 $K=1$ 時，\smolvla{} 每一步都更新，fast residual 反而使成功率從 79\% 降到 75\%。這符合本文假設：當 slow planner 已經高頻 closed-loop，額外 residual 可能不是必要的。當 $K=2$ 到 $K=50$ 時，\method{} 均高於 \smolvla{}，其中 $K=4$ 與 $K=16$ 的差距分別為 +15 與 +18 points。這支持本文主張：fast wrist residual 對 stale action execution regime 較有價值。
+
+\section{Synchronous matched chunk sweep}
+
+圖~\ref{fig:matched_sweep} 與表~\ref{tab:matched_sweep} 顯示 matched chunk sweep。此處 planning、execution 與 replan interval 全部等於 $K$。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.76\textwidth]{fig3_matched_chunk_sweep.png}
+  \caption{LIBERO-Spatial synchronous matched chunk sweep。此設定測試 planning=execution=replan=$K$ 的真正 matched chunk behavior。}
+  \label{fig:matched_sweep}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Matched chunk sweep exact success rates。每列 100 episodes。}
+  \label{tab:matched_sweep}
+  \begin{tabular}{rrrr}
+    \toprule
+    $K$ & \smolvla{} & \method{} & Difference \\
+    \midrule
+    1  & 77\% & 73\% & -4 \\
+    2  & 77\% & 71\% & -6 \\
+    4  & 65\% & 73\% & +8 \\
+    8  & 62\% & 65\% & +3 \\
+    16 & 54\% & 60\% & +6 \\
+    32 & 51\% & 60\% & +9 \\
+    50 & 40\% & 53\% & +13 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Matched sweep 的解讀比 plan=50 sweep 更保守。當 $K=1,2$ 時，\method{} 低於 \smolvla{}，表示 fast residual 在 high-frequency replanning 下可能 over-correct。當 $K\geq4$ 時，\method{} 開始高於 baseline，但長 chunk 的 absolute success rate 仍下降。這說明 residual correction 可以減緩 stale execution degradation，但尚未解決 long-horizon chunk execution。
+
+\section{Residual alpha/clip calibration}
+
+圖~\ref{fig:calibration} 呈現 plan=50、exec=8、每格 50 episodes 的 Spatial residual calibration。此圖使用 PNG 嵌入，以避免 Matplotlib PDF heatmap 在 LaTeX/PDF viewer 中出現色彩 artifact。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.72\textwidth]{fig4_residual_calibration.png}
+  \caption{LIBERO-Spatial residual calibration，synchronous plan=50、exec=8，每格 50 episodes。Highlighted setting $\alpha=0.75,\delta_{\max}=0.2$ 達到 $41/50=82\%$。}
+  \label{fig:calibration}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Plan=50、exec=8 residual calibration exact success rates。每格 50 episodes。}
+  \label{tab:calibration}
+  \begin{tabular}{rrrr}
+    \toprule
+    $\alpha$ & $\delta_{\max}=0.2$ & $\delta_{\max}=0.3$ & $\delta_{\max}=0.4$ \\
+    \midrule
+    0.25 & 50\% & 74\% & 64\% \\
+    0.50 & 68\% & 66\% & 70\% \\
+    0.75 & 82\% & 76\% & 74\% \\
+    1.00 & 76\% & 68\% & 72\% \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+此結果顯示 residual authority 是一階 deployment 變數。Best setting 不是最大 $\alpha$ 或最大 $\delta_{\max}$，而是中等權限設定。這支持式~\ref{eq:merge} 的 clipped merge 設計：fast path 應作為 local correction layer，而不是 unbounded action replacement。
+
+\section{Async-timestep planner-delay stress test}
+
+圖~\ref{fig:delay} 與表~\ref{tab:delay} 是本文唯一 async-timestep experiment。此 sweep 固定 plan=50、exec=16，並改變 planner delay $d$。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.76\textwidth]{fig5_async_planner_delay.png}
+  \caption{Async-timestep planner-delay stress test。Error bars 為 Wilson 95\% intervals；主文字僅以 success rate 解讀。}
+  \label{fig:delay}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Planner-delay sweep exact success rates。每列 100 episodes。}
+  \label{tab:delay}
+  \begin{tabular}{rrrr}
+    \toprule
+    Delay $d$ & Disable-fast & \method{} & Difference \\
+    \midrule
+    0 & 68\% & 64\% & -4 \\
+    1 & 64\% & 68\% & +4 \\
+    2 & 62\% & 72\% & +10 \\
+    3 & 61\% & 68\% & +7 \\
+    4 & 56\% & 66\% & +10 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Delay $d=0$ 時 disable-fast 較高，表示 fast residual 不是所有情況都應介入。但在 $d=1..4$ 時，\method{} 均高於 disable-fast，尤其 $d=2,4$ 皆為 +10 points。這支持本文對 fast residual 的定位：當 slow chunk arrival 與 current timestep 之間存在 mismatch 時，current wrist evidence 可提供局部修正訊號。
+
+\section{DINO visualization discussion}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.72\textwidth]{fig_dino_cross_attention_example.png}
+  \caption{DINO wrist patch attention visualization example。此圖用於說明 fast residual module 確實讀取 patch-level wrist features；它不是 causal attribution proof。}
+  \label{fig:dino_attention}
+\end{figure}
+
+DINO visualization 的主要用途是檢查資料流與局部 patch behavior。若 thesis 要進一步宣稱 wrist patch 是改善成功率的主要因果來源，必須補上 wrist mask、third-person mask、DINO patch masking、no-DINO 與 latent-context removal ablations。目前本文只主張「wrist-conditioned residual configuration」在特定 chunk protocol 下改善成功率。
+
+\section{整體討論}
+
+綜合上述結果，\method{} 的成功模式與失敗模式都很清楚。成功模式出現在 stale-action risk 較高的設定，例如 plan=50 中等到長 execution interval、matched $K\geq4$、以及 planner delay $d>0$。失敗模式出現在 high-frequency replanning，例如 $K=1$ 或 matched $K=2$，fast residual 可能 over-correct baseline 已經合理的 action。
+
+因此，本文結論不是「fast residual 永遠改善 VLA」，而是「有界 wrist residual 對 frozen VLA action chunks 的 stale execution regime 有幫助」。這個結論較窄，但較符合目前 evidence。

@@ -127,6 +127,26 @@ def _inline_css_assets(css: str, assets_dir: Path) -> str:
     return re.sub(r"url\((?P<url>[^)]+)\)", replace_url, css)
 
 
+def _inline_js_assets(js: str, assets_dir: Path) -> str:
+    def replace_string_asset(match: re.Match[str]) -> str:
+        quote = match.group("quote")
+        raw = match.group("url")
+        if raw.startswith("/assets/"):
+            asset_name = raw.removeprefix("/assets/")
+        elif raw.startswith("./assets/"):
+            asset_name = raw.removeprefix("./assets/")
+        elif raw.startswith("assets/"):
+            asset_name = raw.removeprefix("assets/")
+        else:
+            return match.group(0)
+        asset_path = assets_dir / asset_name
+        if not asset_path.exists():
+            return match.group(0)
+        return f"{quote}{_asset_data_url(asset_path)}{quote}"
+
+    return re.sub(r'(?P<quote>["\'])(?P<url>(?:/|\./)?assets/[^"\']+)(?P=quote)', replace_string_asset, js)
+
+
 def _find_single(pattern: str, text: str, label: str) -> str:
     matches = re.findall(pattern, text)
     if len(matches) != 1:
@@ -160,7 +180,7 @@ def _bundle_html(markdown: str) -> str:
             raise RuntimeError("standalone presentation build output is missing expected CSS asset")
         css_parts.append(_inline_css_assets(css_path.read_text(encoding="utf-8"), assets_dir))
     css = "\n".join(css_parts)
-    js = js_path.read_text(encoding="utf-8")
+    js = _inline_js_assets(js_path.read_text(encoding="utf-8"), assets_dir)
     favicon = ""
     if favicon_match:
         icon_path = STANDALONE_BUILD_DIR / favicon_match.group(1).lstrip("/")
