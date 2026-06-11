@@ -347,12 +347,12 @@ Run:
 
 ```bash
 rg -n -F \
-  -e "HuggingFaceVLA/smolvla\\_libero" \
-  -e "lerobot\\_policy\\_hfrvla" \
-  -e "observation.extra.a\\_base" \
-  -e "experiments/eval\\_registry" \
-  -e "hfrvla\\_fwr\\_chunk\\_generated\\_seq2\\_b1024p3\\_50k" \
-  -e "smolvla\\_libero" \
+  -e "HuggingFaceVLA/smolvla_libero" \
+  -e "lerobot_policy_hfrvla" \
+  -e "observation.extra.a_base" \
+  -e "experiments/eval_registry" \
+  -e "hfrvla_fwr_chunk_generated_seq2_b1024p3_50k" \
+  -e "smolvla_libero" \
   paper/src/main.tex \
   paper/src/main_zh.tex \
   paper/targets/nycu_thesis/latex/Sections/appendix.tex
