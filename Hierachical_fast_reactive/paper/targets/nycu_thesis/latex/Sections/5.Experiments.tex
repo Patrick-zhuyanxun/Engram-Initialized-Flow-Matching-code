@@ -1,29 +1,25 @@
 \chapter{實驗設計}
 \label{ch:experiments}
 
-\section{Benchmark 與 metric}
+\section{Benchmark and metric}
 
-本文主要使用 LIBERO-Spatial 作為 simulation benchmark~\cite{liu2023libero}。Spatial tasks 對空間關係與 gripper-object alignment 較敏感，適合觀察 action chunk stale execution 的影響。主要 metric 是 success rate：
+本文主要使用 LIBERO-Spatial 作為 simulation benchmark~\cite{liu2023libero}。Spatial tasks 對空間關係、gripper-object alignment 與局部接觸幾何較敏感，因此適合觀察 action chunk stale execution 的影響。若 frozen planner 每一步都重新觀察並重新規劃，local residual 不一定有幫助；但當 chunk 後段 action 在較舊的 visual feedback 下被執行時，wrist-based correction 才有可能展現價值。
+
+主要 metric 是 success rate：
 
 \begin{equation}
   \mathrm{SuccessRate}=\frac{\mathrm{Number\ of\ successful\ episodes}}{\mathrm{Number\ of\ evaluated\ episodes}}\times100\%.
 \end{equation}
 
-本文依使用者需求以 success rate 為主，不把 margin plots 作為主結果。若圖中有 Wilson interval，只用於視覺不確定性輔助，不改變主要 success-rate reporting。
+本文以 success rate 作為主結果。Figures 中若出現 Wilson interval，僅用於視覺化 episode-level uncertainty；本文不把它解讀為 multi-seed confidence interval，也不以 margin plots 取代 success-rate reporting。
 
-\section{Eval registry}
+\section{Registry-backed evaluation}
 
-所有實驗列入：
-
-\begin{quote}
-\texttt{experiments/eval\_registry/eval\_results\_master.csv}
-\end{quote}
-
-此 registry 由 \texttt{scripts/build\_eval\_results\_master.py} 從 source manifest 產生。本文使用 registry 的目的有三個：第一，保存每個結果的 checkpoint、protocol 與 status；第二，避免跨 protocol 手動比較；第三，使 thesis 表格能追溯到原始 sweep source。
+所有 quantitative claims 都由 project eval registry 追蹤。Registry 的角色不是提供新的 metric，而是確保每個 success rate 都能追溯到對應的 policy、benchmark split、chunk protocol、episode count 與 status。這避免了兩種常見錯誤：第一，把不同 chunk protocol 的結果直接比較；第二，從 terminal log 手動抄數字而失去 provenance。Exact registry file paths 與 source manifest 列於 Appendix~\ref{app:thesis-implementation-reproducibility}。
 
 \section{Protocol variables}
 
-每個 evaluation 都必須記錄三個 chunk 變數：
+本文所有主要比較都控制三個 chunk protocol variables：
 
 \begin{table}[htbp]
   \centering
@@ -31,54 +27,56 @@
   \label{tab:protocol_vars}
   \begin{tabular}{ll}
     \toprule
-    Variable & Meaning \\
+    Protocol variable & Meaning \\
     \midrule
-    \texttt{planning\_chunk\_size} & slow planner 一次產生多少 actions \\
-    \texttt{execution\_chunk\_size} & 執行多少 actions 後才換 chunk 或 replan \\
-    \texttt{replan\_interval\_steps} & slow planner refresh 的控制間隔 \\
+    Planned chunk length & Slow planner 一次產生多少 candidate actions \\
+    Executed open-loop length & Robot 在下一次切換前連續執行多少 actions \\
+    Replanning interval & Slow planner 多久接收新 observation 並 refresh chunk \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-若不同 policy 使用不同 protocol，其 success rate 不能視為 matched comparison。因此本文將 main sweeps 固定為 \method{} 與 \smolvla{} 使用相同 chunk override。
+若 \method{} 與 \smolvla{} baseline 使用不同 protocol，success rate 不能視為 matched comparison。因此本文的 main sweeps 固定兩者使用相同 chunk override，只改變 protocol 本身或 residual calibration setting。
 
 \section{Synchronous sweeps}
 
-除 planner-delay experiment 外，本文所有主要 sweeps 都使用 synchronous inference。
+除了 planner-delay stress test 以外，本文所有主要 sweeps 都使用 synchronous inference。這代表 slow planner 在需要新 chunk 時立即產生可用 chunk；實驗重點不是 planner compute latency，而是 action chunk 被 open-loop 執行時產生的 stale feedback problem。
 
-\subsection{Plan=50 execution/replan sweep}
+\subsection{Plan-50 execution/replan sweep}
 
-此 sweep 固定 \texttt{planning\_chunk\_size=50}，並令 \texttt{execution\_chunk\_size=replan\_interval\_steps=K}。此設定測試 slow planner 產生長 chunk 時，不同 execution interval 對 success rate 的影響。
+第一個 sweep 固定 planned chunk length 為 50，並令 executed open-loop length 與 replanning interval 共同等於 $K$。此設定測試：當 slow planner 產生長 chunk 時，若 robot 每 $K$ 步才切換或 refresh chunk，fast wrist residual 是否能改善後段 stale actions。
+
+這個 protocol 特別適合回答「長 planning horizon 下，是否可以用 fast local correction 延緩 stale chunk degradation」。它不代表 full async scheduler，因為 planner 在每次 request 時仍被視為 synchronous available。
 
 \subsection{Matched chunk sweep}
 
-Matched chunk sweep 設定：
+第二個 sweep 將 planned chunk length、executed open-loop length 與 replanning interval 全部設為同一個 $K$。此設定比 plan-50 sweep 更嚴格，因為 planner 不再固定產生 50-step chunk；每個 tested $K$ 都是一個 matched planning/execution regime。
 
-\begin{equation}
-  \texttt{planning\_chunk\_size}=\texttt{execution\_chunk\_size}=\texttt{replan\_interval\_steps}=K.
-\end{equation}
-
-此設定測試真正的 matched long-chunk execution，而不是讓 planner 產生長 chunk 但仍頻繁重規劃。
+Matched chunk sweep 的目的，是確認 \method{} 的改善不是來自「長 chunk 但頻繁 refresh」這種混合設定，而是在真正 matched long-chunk execution 中仍能降低 degradation。
 
 \section{Residual calibration}
 
-Calibration sweep 改變 $\alpha$ 與 $\delta_{\max}$，觀察 residual authority 對 success rate 的影響。主要圖使用 plan=50、exec=8、每格 50 episodes 的 Spatial sweep。這組實驗回答 fast residual 是不是需要有界，而不是越大越好。
+Residual calibration sweep 改變 $\alpha$ 與 $\dmax$，觀察 residual authority 對 success rate 的影響。這組實驗回答的問題是：fast residual 應該是有界 local correction，還是可以讓 residual head 自由輸出大幅 action correction。
+
+本文預期的合理區間是 bounded correction。若 $\alpha$ 或 $\dmax$ 過大，residual 可能覆蓋 frozen planner 的 global intent；若過小，則無法修正 chunk 後段累積的局部偏差。因此 calibration sweep 不只是 hyperparameter search，而是驗證 clipped merge 是否為方法必要成分。
 
 \section{Async-timestep planner-delay stress test}
 
-Planner-delay sweep 是本文唯一 async-timestep inference experiment。Slow planner 在 step $t$ 發出 request，但 chunk 在 $t+d$ 才可用；execution 從 delayed chunk index $d$ 開始。Fast wrist residual 仍在 current timestep 執行。此實驗與 synchronous sweeps 分開報告，避免混合不同 runtime assumption。
+Planner-delay sweep 是本文唯一 async-timestep inference experiment。此實驗中，slow planner 在 step $t$ 發出 request，但 chunk 在 $t+d$ 個 control timesteps 後才可用；execution 從 delayed chunk 的對應 index 開始。Fast wrist residual 仍在 current timestep 執行，因此能利用當前 wrist observation 修正 delayed base action。
+
+這個實驗和 synchronous sweeps 分開報告，因為它測試的是不同 runtime assumption。它不是完整 real-time remote-planner deployment，也不涵蓋任意 compute delays；它是一個受控 stress test，用來檢查 slow chunks late arrival 時，current wrist evidence 是否能降低 disable-fast ablation 的 degradation。
 
 \section{Unfinished experiments}
 
 以下項目目前不作為 main-text evidence：
 
 \begin{itemize}
-  \item Dual-view DINO fast residual ablation。
-  \item Latent-context ablation：移除 \texttt{z\_goal}/\texttt{z\_phase}。
-  \item Chunk-age/stale-target training。
-  \item No-residual-clip control sweeps。
-  \item Multi-seed confidence intervals。
+  \item Dual-view DINO fast residual ablation：同時使用 wrist 與 third-person image 的 fast model。
+  \item Latent-context ablation：移除 cached slow-planner context。
+  \item Chunk-age/stale-target training：用 delayed base chunks 訓練 residual targets。
+  \item No-residual-clip control sweeps：擴展 no-clip controls。
+  \item Multi-seed confidence intervals：以多 seeds 或 task-order variants 重跑 main sweeps。
   \item Causal visual ablations：wrist mask、third-person mask、DINO patch masking。
-  \item Direct A2C2 same-backbone comparison。
-  \item Real-robot tabletop validation。
+  \item Direct A2C2 same-backbone comparison：在相同 \smolvla{} backbone 與 registry 下重現 A2C2。
+  \item Real-robot tabletop validation：在 physical tabletop setup 執行 matched trials。
 \end{itemize}

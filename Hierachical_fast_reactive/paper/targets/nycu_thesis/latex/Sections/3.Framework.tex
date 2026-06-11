@@ -3,7 +3,7 @@
 
 \section{概念架構}
 
-\method{} 將控制問題拆成慢速全域規劃與快速局部修正。慢速端由 frozen \smolvla{} 根據任務語言、影像與狀態產生 base action chunk；快速端在每一個 control tick 讀取當下 wrist DINO patches、robot state、chunk index 與 selected base action，輸出 7 維 residual correction。部署時只執行有界 residual merge。
+\method{} 將控制問題拆成慢速全域規劃與快速局部修正。慢速端由 frozen \smolvla{} 根據任務語言、影像與狀態產生 base action chunk；快速端在每一個 control tick 讀取當下 wrist patch features、robot state、chunk position 與 selected base action，輸出 7 維 residual correction。部署時只執行有界 residual merge。
 
 \begin{figure}[htbp]
   \centering
@@ -12,7 +12,7 @@
   \label{fig:solution_schematic}
 \end{figure}
 
-此設計的關鍵不是讓 fast module 重新規劃任務，而是讓它在 slow planner 的 nominal action 附近做 bounded correction。因此本文不能把 \method{} 描述為 wrist-only policy；準確描述是：\textbf{高頻新視覺證據來自腕部相機，而全域任務語意仍由凍結 slow planner 提供。}
+此設計的關鍵不是讓 fast module 重新規劃任務，而是讓它在 slow planner 的 nominal action 附近做 bounded correction。因此本文不能把 \method{} 描述為 wrist-only controller；準確描述是：\textbf{高頻新視覺證據來自腕部相機，而全域任務語意仍由凍結 slow planner 提供。}
 
 \section{問題變數}
 
@@ -22,13 +22,13 @@
   A_t=(a_t^0,a_t^1,\ldots,a_t^{H-1}).
 \end{equation}
 
-在第 $k$ 個 chunk index 執行時，base action 為 $\abase=a_t^k$。若 robot 與環境已經偏離 $A_t$ 生成時的 observation，則 $\abase$ 可能不再是最佳 action。\method{} 以 fast residual module $f_\theta$ 預測：
+在第 $k$ 個 chunk position 執行時，base action 為 $\abase=a_t^k$。若 robot 與環境已經偏離 $A_t$ 生成時的 observation，則 $\abase$ 可能不再是最佳 action。\method{} 以 fast residual module $f_\theta$ 預測：
 
 \begin{equation}
-  \deltah=f_\theta(x_t^{wrist},s_t,\abase,k,z_{\mathrm{goal}},z_{\mathrm{phase}}),
+  \deltah=f_\theta(x_t^{wrist},s_t,\abase,k,c_t^{slow}),
 \end{equation}
 
-其中 $x_t^{wrist}$ 是 wrist DINO patch tokens，$s_t$ 是 robot state，$z_{\mathrm{goal}}$ 與 $z_{\mathrm{phase}}$ 是 slow planner cached context。最後執行：
+其中 $x_t^{wrist}$ 是 wrist DINO patch tokens，$s_t$ 是 robot state，$c_t^{slow}$ 是 cached slow-planner context。最後執行：
 
 \begin{equation}
   \afinal=\abase+\alpha\cdot\clip(\deltah,-\dmax,\dmax).
@@ -42,7 +42,7 @@
 \begin{enumerate}
   \item \textbf{主結果：} LIBERO-Spatial synchronous plan=50 execution/replan sweep 與 matched chunk sweep。
   \item \textbf{診斷結果：} residual alpha/clip calibration 與 async-timestep planner-delay stress test。
-  \item \textbf{研究流程紀錄：} dataset recording、cache construction、policy plugin、checkpoint packaging 與 registry 管理。
+  \item \textbf{研究流程紀錄：} dataset recording、cache construction、artifact packaging 與 registry 管理。
   \item \textbf{未完成驗證：} no-residual-clip controls、multi-seed、causal visual ablations、A2C2 same-backbone comparison 與 real-robot validation。
 \end{enumerate}
 

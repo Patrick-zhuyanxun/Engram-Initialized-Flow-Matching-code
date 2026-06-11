@@ -49,9 +49,9 @@ VLA 推論昂貴，因此需要 action chunking；action chunking 降低 planner
 本文貢獻如下：
 
 \begin{enumerate}
-  \item \textbf{凍結 VLA action chunk 的腕部相機殘差修正。} 本研究將 \texttt{HuggingFaceVLA/smolvla\_libero} 固定為 slow planner，只訓練小型 fast residual module，讓研究焦點集中在 execution-time correction。
-  \item \textbf{LeRobot-native 研究 artifact。} 本研究建立 \texttt{lerobot\_policy\_hfrvla} policy plugin、HFRVLA LeRobotDataset v3、cached SmolVLA/DINO features、checkpoint packaging 與 eval registry。
-  \item \textbf{明確拆分 planning 與 execution protocol。} 所有結果記錄 \texttt{planning\_chunk\_size}、\texttt{execution\_chunk\_size} 與 \texttt{replan\_interval\_steps}，避免錯誤比較不同 runtime contract。
+  \item \textbf{凍結 VLA action chunk 的腕部相機殘差修正。} 本研究使用針對 LIBERO 適配的 \smolvla{} 作為 frozen slow planner，只訓練小型 fast residual module，讓研究焦點集中在 execution-time correction。
+  \item \textbf{可重現 LeRobot pipeline。} 本研究建立資料記錄、cache construction、fast residual training、artifact packaging 與 eval registry。Exact package names 與 paths 集中列於 appendix。
+  \item \textbf{明確拆分 planning 與 execution protocol。} 所有結果皆記錄 planned chunk length、executed open-loop length 與 replanning interval，避免錯誤比較不同 runtime contract。
   \item \textbf{Success-rate-first 的實驗紀錄。} 本論文以 LIBERO-Spatial success rate 作為主指標，並將 calibration、async delay 與未完成 ablations 分層呈現。
 \end{enumerate}
 

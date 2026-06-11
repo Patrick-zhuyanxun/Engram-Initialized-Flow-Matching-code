@@ -3,44 +3,39 @@
 
 \section{系統總覽}
 
-\method{} 的訓練與推論流程包含四個部分：凍結 \smolvla{} slow planner、HFRVLA dataset/cache、DINOv3 wrist feature extraction、以及 fast residual module。Slow planner 只提供 base action 與 context，不參與更新；fast module 是唯一 trainable component。
+\method{} 的核心問題是：當凍結的 VLA planner 一次輸出多步 action chunk 時，chunk 後段 action 可能已經和目前 wrist observation 不一致；此時能否用一個小型、快速、只針對當前 action 的 residual module 做局部修正。整個系統因此被分成兩條路徑。第一條是 frozen slow planner，負責根據語言、影像與 robot state 產生低頻 action chunk 與 task context。第二條是 trainable fast path，使用目前 wrist camera 的局部視覺證據、robot state、chunk position 與 selected base action，預測一個 bounded 7D residual。
 
-\section{HFRVLA LeRobotDataset v3}
+此設計刻意不 fine-tune slow planner。Slow planner 的角色是提供 global task intent、action chunk 與可快取的慢速脈絡；fast module 的角色則是根據當下 wrist evidence 修正即將執行的 action。也就是說，\method{} 不是重新訓練一個完整 VLA，也不是把 wrist camera 變成獨立 policy，而是在 frozen chunking controller 外加上一個局部反應層。
 
-本研究不直接以 raw LIBERO observation 訓練 residual module，而是先建立 HFRVLA LeRobotDataset v3。此資料集把 frozen slow planner 的 intermediate outputs 與 DINO wrist features 寫入每個 frame，使訓練時不需要重跑 \smolvla{} 與 DINOv3。
+\section{Cached training data and slow-planner context}
+
+訓練 fast residual module 時，本研究不直接把 raw LIBERO observation 丟進 train loop 重新執行 slow planner。相反地，我們先建立一個 cached training dataset：在資料記錄階段執行 frozen planner 與 frozen DINOv3 wrist encoder，並把 fast module 需要的 slow-planner outputs、wrist patch features 與 expert action 一起存下來。這讓後續 training 成為一個乾淨的 supervised residual-learning problem，也避免在每個 training step 重複執行昂貴的 VLA forward。
 
 \begin{table}[htbp]
   \centering
-  \caption{HFRVLA dataset feature contract。}
-  \label{tab:dataset_contract}
-  \begin{tabular}{lll}
+  \caption{Fast residual module 使用的 conceptual signals。Exact dataset keys 與 local paths 列於 Appendix~\ref{app:thesis-implementation-reproducibility}。}
+  \label{tab:conceptual_signals}
+  \begin{tabular}{p{0.24\textwidth}p{0.30\textwidth}p{0.34\textwidth}}
     \toprule
-    Feature & Shape & Thesis role \\
+    Signal & Role & Used for \\
     \midrule
-    \texttt{observation.images.image} & $(256,256,3)$ & third-person image \\
-    \texttt{observation.images.image2} & $(256,256,3)$ & wrist image \\
-    \texttt{observation.state} & $(8,)$ & robot state \\
-    \texttt{action} & $(7,)$ & expert action \\
-    \texttt{observation.extra.a\_base} & $(7,)$ & frozen \smolvla{} base action \\
-    \texttt{observation.extra.k\_idx\_norm} & $(1,)$ & normalized chunk index \\
-    \texttt{observation.extra.z\_goal} & $(960,)$ & slow text/task context \\
-    \texttt{observation.extra.z\_phase} & $(480,)$ & slow action/expert context \\
-    \texttt{observation.extra.dino\_patches} & $(196,384)$ & wrist DINO patch tokens \\
+    Third-person scene image & Global scene observation & Slow-planner recording and diagnostics \\
+    Wrist image & Local gripper-centric observation & DINOv3 wrist feature extraction \\
+    Robot proprioceptive state & Current robot configuration & Residual conditioning \\
+    Expert action & Demonstration target & Supervised residual target \\
+    Frozen planner base action & Selected action from active chunk & Residual reference point \\
+    Chunk position & Where the selected action lies in the chunk & Stale-action conditioning \\
+    Cached slow-planner context & Task and phase context from frozen planner & Context-conditioned pooling \\
+    Frozen DINOv3 wrist patch tokens & Dense local visual descriptors & Fast visual evidence \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-已驗證的本地 dataset root 為：
-
-\begin{quote}
-\texttt{checkpoints/HFRVLA\_libero\_v1\_merged\_reindexed}
-\end{quote}
-
-此 dataset 目前包含 1693 episodes、273465 frames 與 40 tasks。其 feature schema 是本論文方法與實驗可重現性的基礎。
+這個資料設計有兩個重要含義。第一，fast module 學到的是「如何修正 frozen planner 目前要執行的 action」，而不是從頭預測整個 action。第二，slow-planner context 仍然存在於 fast path 中，因此本文不主張 residual 是 wrist-only policy。Wrist camera 提供的是高頻 local evidence；task intent 與 chunk phase 仍由 frozen planner 提供。
 
 \section{DINOv3 腕部 patch features}
 
-Fast path 的高頻新視覺證據來自 wrist camera，也就是 \texttt{observation.images.image2}。本研究使用 frozen DINOv3 ViT-S/16 feature extractor，將 wrist image 轉為 patch tokens。以 224 by 224 preprocessing 與 16 by 16 patch size 計算，輸出為 14 by 14 共 196 個 patch tokens，每個 token 維度為 384。
+Fast visual path 的主要新訊號來自 wrist camera。Wrist view 通常比 third-person view 更接近 gripper、object edge 與 contact neighborhood，因此適合觀察 chunk 後段執行時產生的局部偏差。本研究使用 frozen DINOv3 ViT-S/16 feature extractor，將 wrist image 轉成 $14\times14$ 的 patch grid，共 196 個 patch tokens，每個 token 維度為 384。DINOv3 在 fast-module training 中保持 frozen；training 讀取的是已經 cache 好的 dense wrist descriptors。
 
 \begin{figure}[htbp]
   \centering
@@ -49,41 +44,39 @@ Fast path 的高頻新視覺證據來自 wrist camera，也就是 \texttt{observ
   \label{fig:dino_patch_grid}
 \end{figure}
 
-DINO features 在本文中的角色有三點。第一，它們提供 frozen dense visual representation，降低 fast module 訓練成本。第二，patch tokens 保留 wrist image lattice，適合表示 gripper tip、object edge 與 contact neighborhood。第三，DINO visualization 只用於 pipeline inspection；它不能單獨證明模型決策的因果來源。
+DINO features 在本文中的角色有三點。第一，它們提供 frozen dense visual representation，降低 fast module 訓練成本。第二，patch tokens 保留 wrist image lattice，適合表示 gripper tip、object edge 與 contact neighborhood。第三，DINO visualization 只用於 pipeline inspection；它不能單獨證明模型決策的因果來源。若要支持 causal claim，仍需要 masking 或 ablation experiments。
 
 \section{Fast residual module}
 
-Fast residual module 的輸入包含 wrist DINO patches、robot state、selected base action、chunk index、slow-planner context，以及訓練視窗中的 previous/current information。輸出為 7 維 residual $\deltah$，對應 LIBERO action 的各自由度。
+Fast residual module 的輸入包含 wrist patch features、robot state、selected base action、chunk position、cached slow-planner context，以及 previous/current training window。輸出為 7 維 residual $\deltah$，對應 LIBERO action space 的各自由度。直覺上，selected base action 提供 slow planner 原本想做的動作，wrist features 提供目前 gripper-relative evidence，而 chunk position 告訴 fast module 此 action 在 chunk 中的時間位置。
 
-訓練目標採用 simultaneous residual supervision：
+部署時，模型不直接把 residual 當成完整 replacement action。相反地，\method{} 使用 clipped and scaled merge：
+
+\begin{equation}
+  \afinal =
+  \abase + \alpha \cdot \mathrm{clip}(\deltah, -\dmax, \dmax).
+  \label{eq:thesis_merge}
+\end{equation}
+
+其中 $\alpha$ 與 $\dmax$ 控制 fast path 的 residual authority。這兩個參數不是 cosmetic safety settings，而是方法的一部分：如果 residual 權限太大，fast path 可能覆蓋 slow planner 的 global intent；如果 residual 權限太小，則無法修正 stale chunk 的局部偏差。
+
+\section{Training objective}
+
+訓練目標採用 simultaneous residual supervision。對每個 timestep，expert action 與 frozen planner base action 的差值定義為 residual target：
 
 \begin{equation}
   \Delta a^\star_t = a^{expert}_t-a_{\mathrm{base},t}.
   \label{eq:target_delta}
 \end{equation}
 
-模型以 residual prediction loss 逼近 $\Delta a^\star_t$。部署時不直接使用 unbounded prediction，而是使用式~\ref{eq:merge} 的 clipped merge。此處 $\alpha$ 與 $\dmax$ 控制 fast path 的 residual authority，是本文 calibration sweep 的主要變數。
-
-\section{目前方法限制}
-
-目前訓練 target 是 simultaneous target，即 $a_{\mathrm{base},t}$ 來自同一時間點的 slow planner output。然而 long-chunk deployment 的 $\abase$ 可能來自較早 observation 產生的 chunk。因此，未來更合理的 target 是 chunk-age 或 stale-target supervision：
+Fast module 以 residual prediction loss 逼近 $\Delta a^\star_t$。這個 objective 的好處是簡單、穩定，並直接對應到部署時的 additive correction。它的限制也很清楚：training target 使用的是同時間點的 base action，但 long-chunk deployment 中，正在執行的 base action 可能來自較早 observation 產生的 chunk。因此，未來更合理的 target 是 chunk-age 或 stale-target supervision：
 
 \begin{equation}
   \Delta a^\star_{t,k}=a^{expert}_t-a^{base}_{t-k,k}.
 \end{equation}
 
-這是本文後續工作的核心方向之一。
+這項限制不影響本文主要結論，因為本文的實驗正是在受控 chunk protocol 下測試目前 residual objective 的有效區間；但它指出了下一步改進方向。
 
-\section{Implementation artifacts}
+\section{Implementation boundary}
 
-\method{} 以 LeRobot plugin 形式實作，主要程式包含：
-
-\begin{itemize}
-  \item \texttt{policy/lerobot\_policy\_hfrvla/src/lerobot\_policy\_hfrvla/configuration\_hfrvla.py}
-  \item \texttt{policy/lerobot\_policy\_hfrvla/src/lerobot\_policy\_hfrvla/modeling\_hfrvla.py}
-  \item \texttt{policy/lerobot\_policy\_hfrvla/src/lerobot\_policy\_hfrvla/fast\_wrist\_residual.py}
-  \item \texttt{scripts/record\_hfrvla\_libero.py}
-  \item \texttt{scripts/package\_hfrvla\_checkpoint.py}
-\end{itemize}
-
-所有 paper-facing results 皆由 eval registry 追蹤，而不是直接從 terminal logs 手抄。
+本章主文只描述 research method。為了保持可讀性，LeRobot package name、dataset field names、local dataset root、checkpoint identifiers 與 eval registry paths 不在方法敘事中逐一展開，而是集中列於 Appendix~\ref{app:thesis-implementation-reproducibility}。這樣的分層讓讀者先理解方法，再於需要重現實驗時查閱完整 implementation contract。

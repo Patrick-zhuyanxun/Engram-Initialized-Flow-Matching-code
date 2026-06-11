@@ -41,13 +41,46 @@
   \item 參考文獻整理、排版與目次生成：final formatting stage。
 \end{enumerate}
 
+\section{Implementation and reproducibility details}
+\label{app:thesis-implementation-reproducibility}
+
+本節集中列出主文刻意不展開的 implementation identifiers：
+
+\begin{description}
+  \item[Frozen slow planner] \url{HuggingFaceVLA/smolvla_libero}。
+  \item[LeRobot policy package] \url{lerobot_policy_hfrvla}。
+  \item[Verified LeRobotDataset v3 root] \leavevmode\\
+  \texttt{checkpoints/}\\
+  \texttt{HFRVLA\_libero\_v1\_merged\_reindexed}\\
+  包含 1,693 episodes、273,465 frames 與 40 tasks。
+  \item[Main generated-checkpoint artifact] \leavevmode\\
+  \texttt{hfrvla\_fwr\_chunk\_generated}\\
+  \texttt{seq2\_b1024p3\_50k}。
+  \item[Comparison baseline artifact] \url{smolvla_libero}。
+\end{description}
+
+本地 dataset schema 的主要欄位如下：
+\begin{itemize}
+  \item Images：\url{observation.images.image}、\url{observation.images.image2}。
+  \item State/action：\url{observation.state}、\url{action}。
+  \item Frozen-planner action context：\\
+  \url{observation.extra.a_base}\\
+  \url{observation.extra.k_idx_norm}。
+  \item Slow-planner latent context：\\
+  \url{observation.extra.z_goal}\\
+  \url{observation.extra.z_phase}。
+  \item Wrist visual tokens：\url{observation.extra.dino_patches}。
+\end{itemize}
+
+所有 result claims 由 \url{experiments/eval_registry/eval_results_master.csv} 與 \url{experiments/eval_registry/sources.csv} 追蹤。
+
 \section{Unfinished experiments}
 
 以下項目以紅字保留，表示尚不足以支撐 main-text claim：
 
 \begin{itemize}
   \item \textcolor{red}{Dual-view DINO fast residual ablation}：wrist + third-person image fast model。
-  \item \textcolor{red}{Latent-context ablation}：移除 residual head 中的 \texttt{z\_goal}/\texttt{z\_phase}。
+  \item \textcolor{red}{Latent-context ablation}：移除 residual head 中的 cached slow-planner context。
   \item \textcolor{red}{Chunk-age/stale-target training}：用 delayed base chunks 訓練 residual targets。
   \item \textcolor{red}{No-residual-clip control sweeps}：完整擴展 no-clip controls。
   \item \textcolor{red}{Multi-seed confidence intervals}：以多 seeds 或 task-order variants 重跑 main sweeps。

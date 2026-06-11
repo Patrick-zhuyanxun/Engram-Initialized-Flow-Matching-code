@@ -44,7 +44,7 @@
 \maketitle
 
 \begin{abstract}
-Vision-language-action (VLA) policy 常以 action chunking 分攤昂貴推論成本，但 chunk 後段 action 仍基於較早 observation，可能不再符合目前 robot state。本文研究一個窄而可檢驗的介入：凍結 LIBERO-adapted \smolvla{} planner，只訓練小型 wrist-camera residual module 修正當前要執行的 base action。\method{} 使用 wrist DINOv3 patch features、proprioceptive state、frozen base action、chunk index 與 cached slow-planner context，並執行 $\afinal=\abase+\alpha\,\mathrm{clip}(\deltah)$。所有 main sweeps 只報告 LIBERO-Spatial。在 synchronous plan-50 execution sweeps 中，\method{} 於 $K=2,4,8,16,32,50$ 的成功率為 $79,80,71,75,59,53\%$，\smolvla{} 為 $72,65,60,57,50,40\%$；但 $K=1$ 時 \method{} 為 $75\%$，低於 \smolvla{} 的 $79\%$。在 synchronous matched-chunk sweeps 中，\method{} 自 $K=4$ 起改善 baseline，$K=50$ 為 $53\%$ 對 $40\%$。Residual calibration 顯示 residual authority 必須受限，在 plan-50、exec-8 calibration 中 $\alpha=0.75,\dmax=0.2$ 達到 $41/50$ Spatial successes。最後，唯一 async-timestep experiment 是 planner-delay stress test：delay $d=1..4$ 時，\method{} 維持 $68,72,68,66\%$ success，而 disable-fast ablation 降到 $64,62,61,56\%$。這些結果支持 \method{} 作為 stale VLA chunks 的 clipped local correction layer，而不是 frequent replanning 或完整 async VLA scheduling 的替代品。
+Vision-language-action (VLA) policy 常以 action chunking 分攤昂貴推論成本，但 chunk 後段 action 會在較新的 robot state 下被執行，卻仍然來自較早 observation。本文提出 \method{}，一個窄而可檢驗的介入：凍結針對 LIBERO 適配的 \smolvla{} planner，只訓練小型 wrist-camera residual module 修正當前要執行的 base action。Fast module 使用當前 wrist patch features、proprioceptive state、selected base action、chunk position 與 cached slow-planner context，並透過 $\afinal=\abase+\alpha\,\mathrm{clip}(\deltah)$ 產生 bounded correction。所有 main quantitative claims 只報告 LIBERO-Spatial。在 synchronous plan-50 execution sweeps 中，\method{} 於 $K=2,4,8,16,32,50$ 的成功率為 $79,80,71,75,59,53\%$，\smolvla{} 為 $72,65,60,57,50,40\%$；但 $K=1$ 時 \method{} 為 $75\%$，低於 \smolvla{} 的 $79\%$。在 synchronous matched-chunk sweeps 中，\method{} 自 $K=4$ 起改善 baseline，$K=50$ 為 $53\%$ 對 $40\%$。Residual calibration 顯示 residual authority 必須受限，在 plan-50、exec-8 calibration 中 $\alpha=0.75,\dmax=0.2$ 達到 $41/50$ Spatial successes。最後，planner-delay stress test 顯示 delay $d=1..4$ 時，\method{} 維持 $68,72,68,66\%$ success，而 disable-fast ablation 降到 $64,62,61,56\%$。這些結果支持 \method{} 作為 stale VLA chunks 的 clipped local correction layer，而不是 frequent replanning 或完整 async VLA scheduling 的替代品。
 \end{abstract}
 
 \section{Introduction}
@@ -60,13 +60,13 @@ Chunking 會產生 stale-action failure mode。Chunk 的第一個 action 和生�
   \label{fig:problem-zh}
 \end{figure}
 
-\method{} 在受限 contract 下測試這個想法。我們凍結 \texttt{HuggingFaceVLA/smolvla\_libero}，cache 其 base actions 與 context，並只訓練 wrist residual head。Per-step visual correction signal 來自 wrist camera；但 residual 不是 wrist-only policy，因為它也 condition on $\abase$、chunk position、robot state 與 slow-planner context。它也不是完整 real-time VLA scheduler，而是包在 frozen chunking policy 外的一個 fast local correction module。
+\method{} 在受限 contract 下測試這個想法。我們使用針對 LIBERO 適配的 \smolvla{} 作為 frozen planner，cache 其 base actions 與 slow context，並只訓練 wrist residual head。Per-step visual correction signal 來自 wrist camera；但 residual 不是 wrist-only controller，因為它也 condition on $\abase$、chunk position、robot state 與 slow-planner context。它也不是完整 real-time VLA scheduler，而是包在 frozen chunking controller 外的一個 fast local correction module。
 
 目前 first-draft evidence 的範圍刻意保守。Main quantitative claims 只使用 LIBERO-Spatial；Object results 不與 Spatial 合併進 main text。除了 planner-delay experiment 以外，所有 sweeps 都是 synchronous inference；只有 planner-delay sweep 使用 async-timestep inference。Figures 是主要 evidence，compact tables 只提供 exact values。
 
 本文貢獻如下：
 \begin{itemize}
-  \item 一個 LeRobot-native frozen-\smolvla{} wrapper，包含 trainable wrist-camera residual correction path。
+  \item 一個基於 LeRobot 的 frozen-\smolvla{} system，包含 trainable wrist-camera residual correction path。
   \item 一個 clipped residual merge：$\afinal=\abase+\alpha\,\mathrm{clip}(\deltah)$，不 fine-tune slow planner、不使用 learned deployment gate，也不加入 contact auxiliary head。
   \item Spatial-only planning/execution sweeps，分開 fixed plan-50 execution 與 matched planning/execution chunks。
   \item Async-timestep planner-delay stress test，顯示 slow chunks late arrival 時 fast residual 可降低 degradation。
@@ -96,25 +96,15 @@ Wrist 與 egocentric views 對 precision manipulation 提供 local evidence~\cit
 \end{equation}
 Execution time 會從 active chunk 選出 base action $\abase \in \mathbb{R}^7$。Correction problem 是：在 slow planner 不變的情況下，根據 current wrist feedback 與 cached context 預測 bounded residual $\deltah\in\mathbb{R}^7$。
 
-\subsection{Frozen Planner and Cached Dataset}
+\subsection{Frozen Planner and Cached Context}
 
-Slow planner 是 \texttt{HuggingFaceVLA/smolvla\_libero}。HFRVLA dataset recording 階段會儲存 planner 的 base action $\abase$、pooled context vectors $z_{\mathrm{goal}}\in\mathbb{R}^{960}$ 與 $z_{\mathrm{phase}}\in\mathbb{R}^{480}$、chunk index、wrist DINOv3 patches、robot state、images 與 expert action。Verified local HFRVLA LeRobotDataset v3 包含 1,693 episodes、273,465 frames 與 40 tasks。Fast module 從 cached features 訓練；若 slow planner 或 extraction contract 改變，就必須重新產生 cache。
+Slow planner 是針對 LIBERO 適配的 \smolvla{} model，並且在 training 與 evaluation 中保持 frozen。Dataset recording 階段會儲存 planner chunk 中被選出的 base action、chunk position、compact slow-planner context、wrist DINOv3 patch features、robot state、images 與 expert action。Verified cached dataset 包含 1,693 episodes、273,465 frames 與 40 tasks。Fast module 從 cached features 訓練，因此 training 不會更新或重跑 slow planner。若 slow planner 或 feature-extraction contract 改變，就必須重新產生 cache。Implementation identifiers 與 exact field names 列於 Appendix~\ref{app:implementation-reproducibility-zh}。
 
-\subsection{DINOv3 Wrist Feature Extraction}
+\subsection{Wrist Patch Features}
 
-HFRVLA 的 fast visual path 只使用 wrist camera。Dataset 中的 raw wrist frame 為 \texttt{observation.images.image2}，shape 是 $256\times256\times3$。Recording/cache 階段會把它送入 frozen DINOv3 ViT-S/16 feature extractor，先 resize/crop 到 $224\times224$；patch size 為 16，因此輸出 $14\times14=196$ 個 patch tokens。每個 token 維度是 384，最後以 \texttt{observation.extra.dino\_patches} 儲存為
-\begin{equation}
-  P_t^{\mathrm{wrist}} \in \mathbb{R}^{196\times384}.
-\end{equation}
-DINOv3 在 fast-module training loop 中不更新，也不重跑；訓練讀取的是預先 cache 好的 dense wrist patch descriptors。Patch sequence 在 tensor 中是 flattened，但空間意義仍對應 $14\times14$ grid，因此可用 patch-norm heatmap 或 attention map 檢查 fast head 是否聚焦到 gripper、object 或 contact-relevant region。
+HFRVLA 的 fast visual path 使用 wrist camera 作為高頻視覺證據來源，而不是依賴第三人稱影像。Recording/cache 階段會把每張 wrist frame 送入 frozen DINOv3 ViT-S/16 feature extractor，產生 $14\times14=196$ 個 patch tokens，每個 token 維度為 384。DINOv3 在 fast-module training loop 中不更新，也不重跑；訓練讀取的是預先 cache 好的 dense wrist patch descriptors。這讓 trainable parameter budget 集中在 residual head，也固定了 visual features 的來源。
 
-Residual head 會先把 patch tokens 投影到 hidden width，並用 slow-planner context 形成 query：
-\begin{align}
-  \tilde{P}_t &= W_p P_t^{\mathrm{wrist}},\\
-  q_t &= \mathrm{MLP}([z_{\mathrm{goal}},z_{\mathrm{phase}},\abase,k_t,s_t]),\\
-  e_t^{\mathrm{wrist}} &= \mathrm{CrossAttn}(q_t,\tilde{P}_t,\tilde{P}_t).
-\end{align}
-這個設計讓 wrist branch 保留局部視覺解析度，同時不把它變成完全脫離 slow planner 的 independent policy。下方診斷面板顯示一個例子：第三人稱 RGB、wrist RGB、DINO patch-norm heatmap 與 fast wrist residual cross-attention map。這張面板只用來呈現訊號來源與 spatial correspondence；是否具有 causal necessity 需要 appendix 中列出的 DINO masking / wrist masking ablations 才能判定。
+雖然 cached descriptor 在資料中是 token sequence，它仍對應 wrist image 的 spatial grid。Residual head 會把 patch tokens 投影到 hidden width，並用 selected base action、chunk position、robot state 與 slow-planner context 形成的 query 進行 pooling。這個設計讓 wrist branch 保留局部視覺解析度，同時不把它變成完全脫離 slow planner 的 independent controller。下方診斷面板顯示一個例子：第三人稱 RGB、wrist RGB、DINO patch-norm heatmap 與 fast wrist residual cross-attention map。這張面板只用來呈現訊號來源與 spatial correspondence；是否具有 causal necessity 需要 appendix 中列出的 DINO masking / wrist masking ablations 才能判定。
 
 \begin{center}
   \includegraphics[width=0.98\linewidth]{figures/fig_dino_cross_attention_example.png}
@@ -124,11 +114,7 @@ Residual head 會先把 patch tokens 投影到 hidden width，並用 slow-planne
 
 \subsection{Fast Wrist Residual}
 
-DINOv3 為 frozen/precomputed：每個 wrist frame 表示為 $P_t^{\mathrm{wrist}}\in\mathbb{R}^{196\times384}$，先投影到 residual-head width，再用 slow-planner context 產生的 query 做 cross-attention pooling。Trainable module 接收 pooled wrist patch features $p^{\mathrm{wrist}}_t$、state $s_t$、$\abase$、normalized chunk index $k_t$、slow context，以及 previous/current training window，並預測：
-\begin{equation}
-  \deltah = f_{\theta}(p^{\mathrm{wrist}}_t, s_t, \abase, k_t, z_{\mathrm{goal}}, z_{\mathrm{phase}}, h_t).
-\end{equation}
-Deployment 使用：
+Trainable module 接收 current wrist patch features、robot state、$\abase$、chunk position、cached slow-planner context，以及 previous/current training window，並預測當前要執行 action 的 full 7D residual $\deltah$。Deployment 使用：
 \begin{equation}
   \afinal =
   \abase + \alpha \cdot \mathrm{clip}(\deltah, -\dmax, \dmax).
@@ -160,7 +146,7 @@ loss 為
 
 \subsection{Protocol}
 
-所有 quantitative claims 都 cross-check against \path{experiments/eval_registry/eval_results_master.csv}。Registry check 回報 267 rows。Main results 只使用 LIBERO-Spatial~\citep{liu2023libero}，seed 42。兩個 synchronous generated-checkpoint sweeps 每列 100 episodes，也就是每個 LIBERO-Spatial task 10 episodes。Main HFRVLA checkpoint 是 \path{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k}，除非另外說明，evaluation 使用 $\alpha=0.5$、$\dmax=0.2$；baseline 是 \path{smolvla_libero}。
+所有 quantitative claims 都 cross-check against project eval registry，目前 registry 包含 267 registered rows。Main results 只使用 LIBERO-Spatial~\citep{liu2023libero}，seed 42。兩個 synchronous generated-checkpoint sweeps 每列 100 episodes，也就是每個 LIBERO-Spatial task 10 episodes。除非另外說明，trained \method{} policy 的 evaluation 使用 $\alpha=0.5$、$\dmax=0.2$；comparison baseline 是 frozen \smolvla{} planner。
 
 除了 planner-delay experiment 以外，所有 sweeps 都使用 synchronous inference。只有 planner-delay sweep 使用 async-timestep inference。三個 main protocols 如下：
 \begin{itemize}
@@ -258,6 +244,22 @@ Wrist path 是 local。當 wrist camera 看見相關 gripper-relative geometry �
 \method{} 問的是：凍結的 VLA action chunk 能否透過小型 wrist-camera residual head 變得更 reactive？Spatial-only results 支持一個精確 claim：clipped wrist residuals 在 chunks 變 stale 時有幫助，尤其是 longer execution intervals 與 async planner-delay settings；但當 slow planner 每步 replan 時可能有害。因此 \method{} 最適合被理解為 frozen VLA chunks 的 bounded local correction layer。
 
 \appendix
+
+\section{Implementation and Reproducibility Details}
+\label{app:implementation-reproducibility-zh}
+
+本文主文以 algorithmic level 描述方法；為了 reproducibility，本附錄記錄本地實驗使用的 implementation identifiers：
+\begin{itemize}
+  \item Frozen slow planner：\url{HuggingFaceVLA/smolvla_libero}。
+  \item LeRobot policy package：\url{lerobot_policy_hfrvla}。
+  \item Verified cached dataset root：\url{checkpoints/HFRVLA_libero_v1_merged_reindexed}，包含 1,693 episodes、273,465 frames 與 40 個 LIBERO tasks。
+  \item Main trained HFRVLA artifact：\url{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k}。
+  \item Comparison baseline artifact：\url{smolvla_libero}。
+\end{itemize}
+
+Cached dataset 儲存 top-view RGB、wrist RGB、robot state、expert action、selected base action、normalized chunk position、slow-planner task/phase context，以及 DINOv3 wrist patch tokens。在本地 LeRobotDataset v3 schema 中，這些欄位包含 \url{observation.images.image}、\url{observation.images.image2}、\url{observation.state}、\url{action}、\url{observation.extra.a_base}、\url{observation.extra.k_idx_norm}、\url{observation.extra.z_goal}、\url{observation.extra.z_phase} 與 \url{observation.extra.dino_patches}。
+
+所有 quantitative claims 由 \url{experiments/eval_registry/eval_results_master.csv} 及其 source manifest 追蹤。
 
 \section{Generated 10x10 Sweep Summary}
 

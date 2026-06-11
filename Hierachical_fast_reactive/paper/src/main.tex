@@ -27,7 +27,7 @@
 \maketitle
 
 \begin{abstract}
-Vision-language-action (VLA) policies often amortize expensive inference by predicting action chunks, but the later actions in a chunk are conditioned on observations that may no longer match the current robot state. This paper studies a narrow intervention: keep a LIBERO-adapted \smolvla{} planner frozen and train a small wrist-camera residual module that corrects the currently executed base action. \method{} consumes wrist DINOv3 patch features, proprioceptive state, the frozen base action, chunk index, and cached slow-planner context, then executes $\afinal=\abase+\alpha\,\mathrm{clip}(\deltah)$. All main sweeps are LIBERO-Spatial only. In synchronous plan-50 execution sweeps, \method{} reaches $79,80,71,75,59,53\%$ success at $K=2,4,8,16,32,50$, while \smolvla{} reaches $72,65,60,57,50,40\%$; at $K=1$, \method{} is lower ($75\%$ versus $79\%$). In synchronous matched-chunk sweeps, \method{} improves from $K=4$ onward and reaches $53\%$ versus $40\%$ at $K=50$. A residual calibration sweep shows that bounded residual authority matters, with $\alpha=0.75,\dmax=0.2$ achieving $41/50$ Spatial successes in the plan-50, exec-8 calibration setting. Finally, the only async-timestep experiment is a planner-delay stress test: with delay $d=1..4$, \method{} maintains $68,72,68,66\%$ success while a disable-fast ablation drops to $64,62,61,56\%$. These results support \method{} as a clipped local correction layer for stale VLA chunks, not as a replacement for frequent replanning or full async VLA scheduling.
+Vision-language-action (VLA) policies often amortize expensive inference by predicting action chunks, but later actions in a chunk are executed under observations that may no longer match the current robot state. We introduce \method{}, a narrow intervention that keeps a LIBERO-adapted \smolvla{} planner frozen and trains only a small wrist-camera residual module for the action currently being executed. The fast module uses current wrist patch features, proprioceptive state, the selected base action, chunk position, and cached slow-planner context, then applies the bounded merge $\afinal=\abase+\alpha\,\mathrm{clip}(\deltah)$. All main quantitative claims are LIBERO-Spatial only. In synchronous plan-50 execution sweeps, \method{} reaches $79,80,71,75,59,53\%$ success at $K=2,4,8,16,32,50$, while \smolvla{} reaches $72,65,60,57,50,40\%$; at $K=1$, \method{} is lower ($75\%$ versus $79\%$). In synchronous matched-chunk sweeps, \method{} improves from $K=4$ onward and reaches $53\%$ versus $40\%$ at $K=50$. A residual calibration sweep shows that bounded residual authority matters, with $\alpha=0.75,\dmax=0.2$ achieving $41/50$ Spatial successes in the plan-50, exec-8 calibration setting. Finally, a planner-delay stress test shows that with delay $d=1..4$, \method{} maintains $68,72,68,66\%$ success while a disable-fast ablation drops to $64,62,61,56\%$. These results support \method{} as a clipped local correction layer for stale VLA chunks, not as a replacement for frequent replanning or full async VLA scheduling.
 \end{abstract}
 
 \section{Introduction}
@@ -43,13 +43,13 @@ Chunking creates a stale-action failure mode. The first action in a chunk is con
   \label{fig:problem}
 \end{figure}
 
-\method{} tests this idea under a constrained contract. We freeze \texttt{HuggingFaceVLA/smolvla\_libero}, cache its base actions and context, and train only a small wrist residual head. The per-step visual correction signal is wrist-camera based. The residual is not a wrist-only policy: it also conditions on $\abase$, chunk position, robot state, and slow-planner context vectors. It is also not a complete real-time VLA scheduler. It is a fast local correction module wrapped around a frozen chunking policy.
+\method{} tests this idea under a constrained contract. We use a LIBERO-adapted \smolvla{} model as the frozen planner, cache its base actions and slow context, and train only a small wrist residual head. The per-step visual correction signal is wrist-camera based. The residual is not a wrist-only controller: it also conditions on $\abase$, chunk position, robot state, and slow-planner context. It is also not a complete real-time VLA scheduler. It is a fast local correction module wrapped around a frozen chunking controller.
 
 The current first-draft evidence is deliberately scoped. Main quantitative claims are LIBERO-Spatial only; Object results are not combined into the main text. All sweeps except the planner-delay experiment use synchronous inference; only the planner-delay sweep uses async-timestep inference. Figures carry the primary evidence, and compact tables report exact values.
 
 The contributions are:
 \begin{itemize}
-  \item A LeRobot-native frozen-\smolvla{} wrapper with a trainable wrist-camera residual correction path.
+  \item A LeRobot-based frozen-\smolvla{} system with a trainable wrist-camera residual correction path.
   \item A clipped residual merge, $\afinal=\abase+\alpha\,\mathrm{clip}(\deltah)$, that avoids slow-planner fine-tuning, a learned deployment gate, or a contact auxiliary head.
   \item Spatial-only planning/execution sweeps that separate fixed plan-50 execution from matched planning/execution chunks.
   \item An async-timestep planner-delay stress test showing that the fast residual mitigates degradation when slow chunks arrive late.
@@ -58,7 +58,7 @@ The contributions are:
 \section{Related Work}
 
 \paragraph{VLA and generalist robot policies.}
-Large-scale robot policies range from transformer controllers trained on real robot data~\citep{brohan2022rt1} to VLAs that co-train web-scale vision-language models with robot actions~\citep{brohan2023rt2,kim2024openvla,black2024pi0,shukor2025smolvla}. Open X-Embodiment and DROID highlight the data-scaling side of this trend~\citep{openx2024,khazatsky2024droid}, while Octo studies an open generalist policy that can adapt across sensors and action spaces~\citep{ghosh2024octo}. \method{} does not train a new foundation policy. It asks whether a frozen VLA chunk can be corrected locally.
+Large-scale robot policies range from transformer controllers trained on real robot data~\citep{brohan2022rt1} to VLAs that co-train web-scale vision-language models with robot actions~\citep{brohan2023rt2,kim2024openvla,black2024pi0,shukor2025smolvla}. Open X-Embodiment and DROID highlight the data-scaling side of this trend~\citep{openx2024,khazatsky2024droid}, while Octo studies an open generalist controller that can adapt across sensors and action spaces~\citep{ghosh2024octo}. \method{} does not train a new foundation model. It asks whether a frozen VLA chunk can be corrected locally.
 
 \paragraph{Action chunking and real-time execution.}
 Action Chunking Transformers and Diffusion Policy helped establish chunked action generation and receding-horizon execution in manipulation~\citep{zhao2023aloha,chi2023diffusionpolicy}. FAST studies action tokenization for high-frequency VLA action sequences~\citep{pertsch2025fast}. More recent real-time VLA work addresses latency and chunk continuity: RTC executes one chunk while generating the next~\citep{black2025rtc}, VLASH predicts future execution-time state~\citep{tang2025vlash}, and VLA-RAIL links asynchronous VLA chunks into smoother robot trajectories~\citep{zhao2025vlarail}. \method{} is complementary: it leaves scheduling mostly untouched and corrects the action being executed.
@@ -79,25 +79,15 @@ Let a frozen VLA planner produce an action chunk from observation $o_t$ and lang
 \end{equation}
 At execution time the robot selects a base action $\abase \in \mathbb{R}^7$ from the active chunk. The correction problem is to predict a bounded residual $\deltah\in\mathbb{R}^7$ from current wrist feedback and cached context while leaving the slow planner unchanged.
 
-\subsection{Frozen Planner and Cached Dataset}
+\subsection{Frozen Planner and Cached Context}
 
-The slow planner is \texttt{HuggingFaceVLA/smolvla\_libero}. During HFRVLA dataset recording, the system stores the planner's base action $\abase$, pooled context vectors $z_{\mathrm{goal}}\in\mathbb{R}^{960}$ and $z_{\mathrm{phase}}\in\mathbb{R}^{480}$, chunk index, wrist DINOv3 patches, robot state, images, and expert action. The verified local HFRVLA LeRobotDataset v3 contains 1,693 episodes and 273,465 frames over 40 tasks. The fast module trains from these cached features; if the slow planner or extraction contract changes, the cache must be regenerated.
+The slow planner is a LIBERO-adapted \smolvla{} model that remains frozen throughout training and evaluation. During dataset recording, the system stores the base action selected from the planner's chunk, the chunk position, compact slow-planner context, wrist DINOv3 patch features, robot state, images, and expert action. The verified cached dataset contains 1,693 episodes and 273,465 frames over 40 tasks. The fast module trains from these cached features, so training does not update or rerun the slow planner. If the slow planner or feature-extraction contract changes, the cache must be regenerated. Implementation identifiers and exact field names are reported in Appendix~\ref{app:implementation-reproducibility}.
 
-\subsection{DINOv3 Wrist Feature Extraction}
+\subsection{Wrist Patch Features}
 
-The fast visual path uses the wrist camera rather than the third-person image. The raw wrist frame in the HFRVLA dataset is \texttt{observation.images.image2} with shape $256\times256\times3$. During recording/cache construction, the frozen DINOv3 ViT-S/16 feature extractor resizes/crops the wrist image to $224\times224$. With patch size 16, this produces a $14\times14$ grid, i.e., 196 patch tokens. Each token has 384 channels, and the cached tensor is
-\begin{equation}
-  P_t^{\mathrm{wrist}} \in \mathbb{R}^{196\times384},
-\end{equation}
-stored as \texttt{observation.extra.dino\_patches}. DINOv3 is not updated or rerun inside the fast-module training loop; training reads precomputed dense wrist descriptors. This keeps the trainable parameter budget isolated to the residual head and fixes the provenance of the visual features.
+The fast visual path uses the wrist camera rather than the third-person image as its high-frequency evidence source. During recording/cache construction, a frozen DINOv3 ViT-S/16 feature extractor maps each wrist frame to a $14\times14$ grid of 196 patch tokens with 384 channels per token. DINOv3 is not updated or rerun inside the fast-module training loop; training reads precomputed dense wrist descriptors. This keeps the trainable parameter budget isolated to the residual head and fixes the provenance of the visual features.
 
-Although the tensor is stored as a flattened token sequence, it still corresponds to the wrist image's $14\times14$ spatial grid. The residual head projects the tokens to its hidden width and pools them with a context-conditioned query:
-\begin{align}
-  \tilde{P}_t &= W_p P_t^{\mathrm{wrist}},\\
-  q_t &= \mathrm{MLP}([z_{\mathrm{goal}},z_{\mathrm{phase}},\abase,k_t,s_t]),\\
-  e_t^{\mathrm{wrist}} &= \mathrm{CrossAttn}(q_t,\tilde{P}_t,\tilde{P}_t).
-\end{align}
-Thus the wrist branch keeps local patch-level visual evidence while still conditioning the pooling operation on slow-planner task and phase context. The diagnostic panel below visualizes one frame with third-person RGB, wrist RGB, DINO patch-norm heatmap, and FWR cross-attention. The visualization documents the signal path and spatial correspondence; it is not treated as causal evidence without the masking ablations listed in the appendix.
+Although the cached descriptor is stored as a token sequence, it still corresponds to the wrist image's spatial grid. The residual head projects the tokens to its hidden width and pools them with a query conditioned on the selected base action, chunk position, robot state, and slow-planner context. Thus the wrist branch keeps local patch-level visual evidence while remaining anchored to the task and phase represented by the frozen planner. The diagnostic panel below visualizes one frame with third-person RGB, wrist RGB, DINO patch-norm heatmap, and FWR cross-attention. The visualization documents the signal path and spatial correspondence; it is not treated as causal evidence without the masking ablations listed in the appendix.
 
 \begin{center}
   \includegraphics[width=0.98\linewidth]{figures/fig_dino_cross_attention_example.png}
@@ -107,11 +97,7 @@ Thus the wrist branch keeps local patch-level visual evidence while still condit
 
 \subsection{Fast Wrist Residual}
 
-The trainable module receives current wrist patch features $p^{\mathrm{wrist}}_t$, state $s_t$, $\abase$, normalized chunk index $k_t$, slow context, and a short previous/current training window. DINOv3 is frozen and precomputed: each wrist frame is represented as $P_t^{\mathrm{wrist}}\in\mathbb{R}^{196\times384}$, projected to the residual-head width, and pooled by cross-attention using a query from slow-planner context. The residual head predicts:
-\begin{equation}
-  \deltah = f_{\theta}(p^{\mathrm{wrist}}_t, s_t, \abase, k_t, z_{\mathrm{goal}}, z_{\mathrm{phase}}, h_t).
-\end{equation}
-Deployment uses:
+The trainable module receives current wrist patch features, robot state, $\abase$, chunk position, cached slow-planner context, and a short previous/current training window. It predicts a full 7D residual $\deltah$ for the action about to be executed. Deployment uses:
 \begin{equation}
   \afinal =
   \abase + \alpha \cdot \mathrm{clip}(\deltah, -\dmax, \dmax).
@@ -143,7 +129,7 @@ This target is simple, but it raises a stale-target question: deployment may cor
 
 \subsection{Protocol}
 
-All quantitative claims are cross-checked against \path{experiments/eval_registry/eval_results_master.csv}. The registry check reports 267 rows. Main results use LIBERO-Spatial~\citep{liu2023libero} only with seed 42. The two synchronous generated-checkpoint sweeps use 100 episodes per row, 10 per LIBERO-Spatial task. The main HFRVLA checkpoint is \path{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k}, evaluated with $\alpha=0.5$ and $\dmax=0.2$ unless otherwise specified; the baseline is \path{smolvla_libero}.
+All quantitative claims are cross-checked against the project eval registry, which currently contains 267 registered rows. Main results use LIBERO-Spatial~\citep{liu2023libero} only with seed 42. The two synchronous generated-checkpoint sweeps use 100 episodes per row, 10 per LIBERO-Spatial task. Unless otherwise specified, the trained \method{} policy is evaluated with $\alpha=0.5$ and $\dmax=0.2$; the comparison baseline is the frozen \smolvla{} planner.
 
 All sweeps except the planner-delay experiment use synchronous inference. Only the planner-delay sweep uses async-timestep inference. The three main protocols are:
 \begin{itemize}
@@ -241,6 +227,22 @@ The wrist path is local. It can correct gripper-relative drift when the wrist ca
 \method{} asks whether a frozen VLA action chunk can be made more reactive by adding a small wrist-camera residual head. Spatial-only results support a precise claim: clipped wrist residuals help when chunks become stale, especially in longer execution intervals and async planner-delay settings, while they can hurt when the slow planner replans every step. The method is therefore best understood as a bounded local correction layer for frozen VLA chunks.
 
 \appendix
+
+\section{Implementation and Reproducibility Details}
+\label{app:implementation-reproducibility}
+
+The main text describes the method at the algorithmic level. For reproducibility, this appendix records the implementation identifiers used in the local experiments:
+\begin{itemize}
+  \item Frozen slow planner: \url{HuggingFaceVLA/smolvla_libero}.
+  \item LeRobot policy package: \url{lerobot_policy_hfrvla}.
+  \item Verified cached dataset root: \url{checkpoints/HFRVLA_libero_v1_merged_reindexed}, with 1,693 episodes, 273,465 frames, and 40 LIBERO tasks.
+  \item Main trained HFRVLA artifact: \url{hfrvla_fwr_chunk_generated_seq2_b1024p3_50k}.
+  \item Comparison baseline artifact: \url{smolvla_libero}.
+\end{itemize}
+
+The cached dataset stores top-view RGB, wrist RGB, robot state, expert action, the selected base action, normalized chunk position, slow-planner task and phase context, and DINOv3 wrist patch tokens. In the local LeRobotDataset v3 schema these fields are stored under keys including \url{observation.images.image}, \url{observation.images.image2}, \url{observation.state}, \url{action}, \url{observation.extra.a_base}, \url{observation.extra.k_idx_norm}, \url{observation.extra.z_goal}, \url{observation.extra.z_phase}, and \url{observation.extra.dino_patches}.
+
+Quantitative claims are tracked through \url{experiments/eval_registry/eval_results_master.csv} and its source manifest.
 
 \section{Generated 10x10 Sweep Summary}
 
