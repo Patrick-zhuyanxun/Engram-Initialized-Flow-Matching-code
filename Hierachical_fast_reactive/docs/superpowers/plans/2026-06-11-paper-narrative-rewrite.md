@@ -346,7 +346,13 @@ Expected: No matches.
 Run:
 
 ```bash
-rg -n "HuggingFaceVLA/smolvla_libero|lerobot_policy_hfrvla|observation\\.extra\\.a_base|experiments/eval_registry|hfrvla_fwr_chunk_generated_seq2_b1024p3_50k|smolvla_libero" \
+rg -n -F \
+  -e "HuggingFaceVLA/smolvla\\_libero" \
+  -e "lerobot\\_policy\\_hfrvla" \
+  -e "observation.extra.a\\_base" \
+  -e "experiments/eval\\_registry" \
+  -e "hfrvla\\_fwr\\_chunk\\_generated\\_seq2\\_b1024p3\\_50k" \
+  -e "smolvla\\_libero" \
   paper/src/main.tex \
   paper/src/main_zh.tex \
   paper/targets/nycu_thesis/latex/Sections/appendix.tex
