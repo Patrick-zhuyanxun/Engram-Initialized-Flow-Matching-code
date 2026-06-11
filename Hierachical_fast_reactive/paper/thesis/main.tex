@@ -123,7 +123,7 @@ Action chunking 是常見折衷：slow planner 一次輸出 $H$ 個 actions，ro
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=0.98\linewidth]{fig1_problem_schematic.pdf}
-  \caption{Tail-overlapped async planning 下仍存在的回授缺口。Robot 連續執行 chunk A 與 chunk B；下一段 SmolVLA inference 只和目前 execution chunk 的尾段重疊，並在 chunk switch 時 ready。這避免 idle gap，但長 execution segment 的中段仍使用過期 visual feedback。圖中 $H$ 為 planned action horizon，$e$ 為實際執行段，$K$ 為 replan interval，$d$ 為 SmolVLA compute delay。}
+  \caption{Tail-overlapped async planning 下仍存在的回授缺口。每一列 Gantt row 表示一個 SmolVLA action chunk：何時開始規劃、inference 花多久、以及實際執行了幾個 open-loop control steps。Chunk B/C 的規劃會在目前 execution chunk 的尾段開始，並在 chunk switch 時 ready，因此 execution 仍可首尾相接、沒有 idle gap；但每段長 execution segment 的中段仍使用過期 visual feedback。圖中 $H$ 為 planned action horizon，$e$ 為 open-loop execution steps，$K$ 為 replan interval，$d$ 為 SmolVLA compute delay。}
   \label{fig:thesis-problem}
 \end{figure}
 

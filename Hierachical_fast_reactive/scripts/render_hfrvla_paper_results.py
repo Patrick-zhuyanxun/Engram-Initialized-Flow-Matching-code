@@ -203,116 +203,130 @@ def action_cells(ax, x, y, n, *, w=0.43, h=0.34, edge=OKABE["blue"], fills=None,
 
 
 def plot_problem_schematic(out_dir: Path) -> None:
-    fig, ax = plt.subplots(figsize=(8.35, 3.45))
-    ax.set_xlim(0, 18)
-    ax.set_ylim(0, 5.95)
+    fig, ax = plt.subplots(figsize=(8.9, 4.45))
+    ax.set_xlim(0, 18.8)
+    ax.set_ylim(0, 6.95)
     ax.axis("off")
 
-    ax.text(0.25, 5.55, "Async plans overlap the tail, but execution stays continuous", fontsize=11.4, weight="bold", color=OKABE["black"])
+    ax.text(0.25, 6.58, "Gantt view of async action chunks", fontsize=11.4, weight="bold", color=OKABE["black"])
     ax.text(
         0.25,
-        5.2,
-        "The next chunk is inferred during the final part of the active execution chunk; the robot switches chunks without an idle gap.",
+        6.22,
+        "Planning for the next chunk starts during the tail of the current chunk; execution stays back-to-back but remains open loop between switches.",
         fontsize=6.9,
         color="#444444",
     )
 
     # Time grid and lane labels.
-    x0 = 1.8
+    x0 = 2.75
     step = 0.52
     for i in range(30):
         fc = "#f7f7f7" if i % 2 == 0 else "white"
-        ax.add_patch(Rectangle((x0 + i * step, 0.55), step, 4.35, facecolor=fc, edgecolor="#ececec", linewidth=0.35))
-    arrow(ax, (x0 - 0.25, 0.5), (x0 + 30.3 * step, 0.5), color=OKABE["black"], lw=1.1)
+        ax.add_patch(Rectangle((x0 + i * step, 0.55), step, 5.35, facecolor=fc, edgecolor="#ececec", linewidth=0.35))
+    arrow(ax, (x0 - 0.25, 0.5), (x0 + 30.5 * step, 0.5), color=OKABE["black"], lw=1.1)
     ax.text(x0 - 0.1, 0.28, "time", fontsize=7.3, color=OKABE["black"])
 
-    ax.text(0.12, 4.38, "slow\nplanner", ha="left", va="center", fontsize=8, weight="bold", color=OKABE["blue"])
-    ax.text(0.12, 2.7, "robot\nexecution", ha="left", va="center", fontsize=8, weight="bold", color=OKABE["green"])
-    ax.text(0.12, 1.25, "feedback", ha="left", va="center", fontsize=8, weight="bold", color=OKABE["red"])
+    # Timing constants. Each execution segment has eight control steps.
+    observe_a = x0
+    infer_a = observe_a + 0.78
+    ready_a = observe_a + 2.72
+    exec_a_end = ready_a + 4.16
+    request_b = exec_a_end - 1.95
+    infer_b = request_b + 0.62
+    ready_b = exec_a_end
+    exec_b_end = ready_b + 4.16
+    request_c = exec_b_end - 1.95
+    infer_c = request_c + 0.62
+    ready_c = exec_b_end
+    exec_c_end = ready_c + 3.12
 
-    # Async requests are intentionally aligned with the tail of the active execution chunk.
-    request1 = x0
-    infer1 = x0 + 0.85
-    ready1 = x0 + 2.75
-    exec1_start = ready1
-    exec1_end = exec1_start + 4.7
-    exec2_end = exec1_end + 4.7
-    request2 = exec1_end - 2.15
-    infer2 = request2 + 0.72
-    ready2 = exec1_end
-    request3 = exec2_end - 2.15
-    infer3 = request3 + 0.72
-    ready3 = exec2_end
-    cell_w = (exec1_end - exec1_start) / 8
+    chunk_rows = [
+        ("chunk A", observe_a, infer_a, ready_a, exec_a_end, 4.85, "observe\nscene", "execute A"),
+        ("chunk B", request_b, infer_b, ready_b, exec_b_end, 3.55, "request\nB", "execute B"),
+        ("chunk C", request_c, infer_c, ready_c, exec_c_end, 2.25, "request\nC", "future C"),
+    ]
 
-    # Tail overlap bands make the async timing explicit.
-    for xs, xe in [(infer2, ready2), (infer3, ready3)]:
-        ax.add_patch(Rectangle((xs, 2.23), xe - xs, 2.55, facecolor="#e8f4fb", edgecolor="none", alpha=0.72))
-        ax.plot([xs, xs], [2.25, 4.78], color=OKABE["blue"], linewidth=0.7, linestyle="--", alpha=0.75)
-        ax.plot([xe, xe], [2.25, 4.78], color=OKABE["blue"], linewidth=0.7, linestyle="--", alpha=0.75)
+    for row_name, x_req, x_inf, x_ready, x_end, y, req_label, exec_label in chunk_rows:
+        ax.text(0.16, y + 0.24, row_name, ha="left", va="center", fontsize=8.0, weight="bold", color=OKABE["black"])
+        ax.text(2.05, y + 0.24, "plan", ha="right", va="center", fontsize=5.8, color=OKABE["blue"], weight="bold")
+        ax.text(2.05, y - 0.18, "execute", ha="right", va="center", fontsize=5.8, color=OKABE["green"], weight="bold")
 
-    planner_y = 4.32
-    box(ax, (request1, planner_y), 0.72, 0.36, "observe\nA", fc="#fff7d6", ec=OKABE["orange"], fs=5.2, weight="bold")
-    box(ax, (infer1, planner_y), ready1 - infer1 - 0.12, 0.36, "SmolVLA\ninference", fc="#dbeafe", ec=OKABE["blue"], fs=5.4, weight="bold")
-    box(ax, (ready1 - 0.22, planner_y), 0.95, 0.36, "chunk A\nready", fc="#e7f6ec", ec=OKABE["green"], fs=5.1, weight="bold")
-    bracket(ax, infer1, ready1, 4.94, "d", color=OKABE["red"], fs=6.6, dy=0.06)
+        box(ax, (x_req, y + 0.04), 0.7, 0.36, req_label, fc="#fff7d6", ec=OKABE["orange"], fs=4.8, weight="bold")
+        box(ax, (x_inf, y + 0.04), x_ready - x_inf - 0.58, 0.36, "SmolVLA\ninference", fc="#dbeafe", ec=OKABE["blue"], fs=5.1, weight="bold")
+        box(ax, (x_ready - 0.58, y + 0.04), 0.76, 0.36, "chunk\nready", fc="#e7f6ec", ec=OKABE["green"], fs=4.8, weight="bold")
 
-    box(ax, (request2, planner_y), 0.72, 0.36, "request\nB", fc="#fff7d6", ec=OKABE["orange"], fs=5.2, weight="bold")
-    box(ax, (infer2, planner_y), ready2 - infer2 - 0.15, 0.36, "SmolVLA\ninference", fc="#dbeafe", ec=OKABE["blue"], fs=5.4, weight="bold")
-    box(ax, (ready2 - 0.35, planner_y), 0.95, 0.36, "chunk B\nready", fc="#e7f6ec", ec=OKABE["green"], fs=5.1, weight="bold")
-    bracket(ax, request2, request3, 4.88, "K", color=OKABE["purple"], fs=6.7, dy=0.05)
-    bracket(ax, infer2, ready2, 4.05, "tail overlap", color=OKABE["blue"], fs=6.2, dy=0.05)
+        # Execution cells are deliberately split so the number of open-loop control steps is visible.
+        n_steps = 8 if row_name != "chunk C" else 6
+        cell_w = (x_end - x_ready) / n_steps
+        exec_y = y - 0.54
+        cell_fill = "#dff1df" if row_name != "chunk C" else "#f7fff7"
+        for i in range(n_steps):
+            ax.add_patch(
+                Rectangle((x_ready + i * cell_w, exec_y), cell_w, 0.42, facecolor=cell_fill, edgecolor=OKABE["green"], linewidth=0.9)
+            )
+            if i in (0, n_steps - 1):
+                ax.text(x_ready + i * cell_w + cell_w / 2, exec_y + 0.08, str(i + 1), ha="center", va="center", fontsize=4.7, color="#666666")
+        ax.add_patch(Rectangle((x_ready, exec_y), x_end - x_ready, 0.42, facecolor="none", edgecolor=OKABE["green"], linewidth=1.5))
+        ax.text((x_ready + x_end) / 2, exec_y + 0.26, exec_label, ha="center", va="center", fontsize=6.2, weight="bold")
 
-    box(ax, (request3, planner_y), 0.72, 0.36, "request\nC", fc="#fff7d6", ec=OKABE["orange"], fs=5.2, weight="bold")
-    box(ax, (infer3, planner_y), ready3 - infer3 - 0.15, 0.36, "SmolVLA\ninference", fc="#dbeafe", ec=OKABE["blue"], fs=5.4, weight="bold")
-    box(ax, (ready3 - 0.35, planner_y), 0.95, 0.36, "chunk C\nready", fc="#e7f6ec", ec=OKABE["green"], fs=5.1, weight="bold")
-    bracket(ax, infer3, ready3, 4.05, "tail overlap", color=OKABE["blue"], fs=6.2, dy=0.05)
+        if row_name != "chunk C":
+            bracket(ax, x_ready, x_end, exec_y - 0.18, "open loop: e=8 control steps", color=OKABE["green"], fs=5.7, dy=-0.18)
+        else:
+            ax.text((x_ready + x_end) / 2, exec_y - 0.23, "prepared next segment", ha="center", va="top", fontsize=5.5, color=OKABE["green"], weight="bold")
 
-    # Gantt-style execution chunks. Adjacent rectangles make continuity explicit.
-    def chunk_bar(x_start, x_end, y, label, edge, fill, hatch_fill):
-        n = 8
-        w = (x_end - x_start) / n
-        for i in range(n):
-            fc = hatch_fill if i < 5 else fill
-            ax.add_patch(Rectangle((x_start + i * w, y), w, 0.5, facecolor=fc, edgecolor=edge, linewidth=0.9))
-        ax.add_patch(Rectangle((x_start, y), x_end - x_start, 0.5, facecolor="none", edgecolor=edge, linewidth=1.5))
-        ax.text((x_start + x_end) / 2, y + 0.25, label, ha="center", va="center", fontsize=6.8, weight="bold")
+        ax.plot([x_ready, x_ready], [exec_y - 0.1, y + 0.55], color="#333333", linewidth=0.8)
 
-    chunk_bar(exec1_start, exec1_end, 2.48, "execute chunk A", OKABE["green"], "white", "#dff1df")
-    chunk_bar(exec1_end, exec2_end, 2.48, "execute chunk B", OKABE["green"], "white", "#dff1df")
-    ax.plot([exec1_end, exec1_end], [2.35, 3.12], color=OKABE["black"], linewidth=0.9)
-    ax.text(exec1_end + 0.12, 2.18, "no gap", ha="left", fontsize=6.0, color=OKABE["black"])
-    arrow(ax, (ready1 + 0.25, 4.3), (exec1_start + 0.25, 3.05), color=OKABE["blue"], lw=1.0)
-    arrow(ax, (ready2 + 0.1, 4.3), (exec1_end + 0.2, 3.05), color=OKABE["blue"], lw=1.0)
-    arrow(ax, (ready3 + 0.1, 4.3), (exec2_end + 0.05, 3.05), color=OKABE["blue"], lw=1.0)
-    bracket(ax, exec1_start, exec1_end, 3.22, "e", color=OKABE["green"], fs=6.8, dy=0.08)
-    bracket(ax, exec1_start, exec1_start + 8 * cell_w, 2.13, "long execution segment", color=OKABE["green"], fs=6.4, dy=-0.22)
+    # Tail overlap bands connect next-chunk planning to the current chunk's execution tail.
+    for xs, xe, y0_band, label_y in [(request_b, ready_b, 3.98, 4.9), (request_c, ready_c, 2.68, 3.56)]:
+        ax.add_patch(Rectangle((xs, y0_band), xe - xs, 0.7, facecolor="#e8f4fb", edgecolor=OKABE["blue"], linewidth=0.7, alpha=0.65))
+        ax.plot([xs, xs], [y0_band - 0.18, y0_band + 0.88], color=OKABE["blue"], linewidth=0.7, linestyle="--", alpha=0.8)
+        ax.plot([xe, xe], [y0_band - 0.18, y0_band + 0.88], color=OKABE["blue"], linewidth=0.7, linestyle="--", alpha=0.8)
+        ax.text(
+            (xs + xe) / 2,
+            label_y,
+            "tail-overlap planning",
+            ha="center",
+            va="center",
+            fontsize=5.6,
+            color=OKABE["blue"],
+            weight="bold",
+            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.82, "pad": 0.6},
+        )
 
-    # Planned horizon preview: the planner emits a horizon, but only a segment is executed before switching.
-    action_cells(ax, exec1_start, 3.42, 10, w=0.31, h=0.2, edge=OKABE["blue"], fills=["#eef6ff"] * 10)
-    bracket(ax, exec1_start, exec1_start + 10 * 0.31, 3.72, "H", color=OKABE["blue"], fs=6.6, dy=0.06)
+    # Continuity markers between executed chunks.
+    ax.plot([ready_b, ready_b], [2.95, 4.08], color=OKABE["black"], linewidth=1.0)
+    ax.text(ready_b + 0.08, 3.47, "no gap", ha="left", va="bottom", fontsize=5.4, color=OKABE["black"])
+    ax.plot([ready_c, ready_c], [1.65, 2.78], color=OKABE["black"], linewidth=1.0)
+    ax.text(ready_c + 0.08, 2.16, "no gap", ha="left", va="bottom", fontsize=5.4, color=OKABE["black"])
+
+    # Planned horizon preview: the planner emits a longer action horizon, but only e steps are sent before the next switch.
+    action_cells(ax, ready_a, 5.42, 10, w=0.28, h=0.18, edge=OKABE["blue"], fills=["#eef6ff"] * 10)
+    bracket(ax, ready_a, ready_a + 10 * 0.28, 5.74, "H", color=OKABE["blue"], fs=6.4, dy=0.04)
+    bracket(ax, infer_a, ready_a, 6.02, "d", color=OKABE["red"], fs=6.4, dy=0.04)
+    bracket(ax, request_b, request_c, 5.94, "K", color=OKABE["purple"], fs=6.4, dy=0.04)
 
     # Missing-feedback callout.
-    for i in range(10):
-        cx = exec1_start + 0.55 + i * 0.75
-        ax.plot([cx, cx], [1.58, 1.82], color="#bbbbbb", linewidth=0.9)
-    box(ax, (exec1_start - 0.2, 1.05), 2.25, 0.48, "chunk-start\nobservation", fc="#fff3e6", ec=OKABE["red"], fs=6.4, weight="bold")
-    box(ax, (exec1_start + 3.0, 1.05), 3.05, 0.48, "middle actions use\nstale feedback", fc="#fff3e6", ec=OKABE["red"], fs=6.6, weight="bold")
-    box(ax, (exec1_start + 7.0, 1.05), 2.0, 0.48, "local mismatch\ncan grow", fc="#fff3e6", ec=OKABE["red"], fs=6.3, weight="bold")
-    arrow(ax, (exec1_start + 2.05, 1.29), (exec1_start + 3.0, 1.29), color=OKABE["red"], lw=1.0)
-    arrow(ax, (exec1_start + 6.05, 1.29), (exec1_start + 7.0, 1.29), color=OKABE["red"], lw=1.0)
+    feedback_y = 0.98
+    ax.text(0.12, feedback_y + 0.22, "feedback\nstate", ha="left", va="center", fontsize=8, weight="bold", color=OKABE["red"])
+    box(ax, (ready_a - 0.2, feedback_y), 2.18, 0.46, "visual feedback\nat chunk start", fc="#fff3e6", ec=OKABE["red"], fs=5.9, weight="bold")
+    box(ax, (ready_a + 2.65, feedback_y), 3.2, 0.46, "middle steps use\nstale feedback", fc="#fff3e6", ec=OKABE["red"], fs=6.1, weight="bold")
+    box(ax, (ready_a + 6.65, feedback_y), 2.05, 0.46, "local mismatch\ncan grow", fc="#fff3e6", ec=OKABE["red"], fs=5.8, weight="bold")
+    arrow(ax, (ready_a + 1.98, feedback_y + 0.23), (ready_a + 2.65, feedback_y + 0.23), color=OKABE["red"], lw=1.0)
+    arrow(ax, (ready_a + 5.85, feedback_y + 0.23), (ready_a + 6.65, feedback_y + 0.23), color=OKABE["red"], lw=1.0)
+    for cx in [ready_a + 0.55, ready_a + 1.45, ready_a + 2.35, ready_a + 3.25, ready_a + 4.15, ready_a + 5.05, ready_a + 5.95, ready_a + 6.85]:
+        ax.plot([cx, cx], [1.58, 1.88], color="#bbbbbb", linewidth=0.85)
 
     # Variable legend in human terms.
-    ax.add_patch(Rectangle((14.0, 0.92), 3.65, 1.25, facecolor="white", edgecolor="#d9d9d9", linewidth=0.8))
+    ax.add_patch(Rectangle((14.15, 4.72), 3.75, 1.08, facecolor="white", edgecolor="#d9d9d9", linewidth=0.8))
     legend = [
         ("H", "planned action horizon"),
-        ("e", "segment actually executed"),
+        ("e", "open-loop steps executed"),
         ("K", "time between replans"),
         ("d", "SmolVLA compute delay"),
     ]
-    lx = 14.14
+    lx = 14.3
     for i, (sym, desc) in enumerate(legend):
-        y = 1.92 - i * 0.25
+        y = 5.54 - i * 0.22
         ax.text(lx, y, f"{sym}:", fontsize=6.1, weight="bold", color=OKABE["black"])
         ax.text(lx + 0.28, y, desc, fontsize=6.1, color="#444444")
 

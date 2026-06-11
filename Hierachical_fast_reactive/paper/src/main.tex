@@ -39,7 +39,7 @@ Chunking creates a stale-action failure mode. The first action in a chunk is con
 \begin{figure}[t]
   \centering
   \includegraphics[width=0.98\linewidth]{figures/fig1_problem_schematic.pdf}
-  \caption{Missing feedback despite tail-overlapped async planning. The robot executes chunk A and chunk B continuously, while the next SmolVLA inference overlaps only the final part of the active execution chunk and becomes ready at the chunk switch. This avoids an idle gap, but the middle of a long execution segment still uses stale visual feedback. $H$ is the planned action horizon, $e$ is the segment actually executed, $K$ is the interval between replans, and $d$ is the SmolVLA compute delay.}
+  \caption{Missing feedback despite tail-overlapped async planning. Each Gantt row shows one SmolVLA action chunk: when planning starts, how long inference takes, and which open-loop control steps are executed. Planning for chunk B/C starts during the tail of the active execution chunk and becomes ready at the switch, so chunk execution stays back-to-back without an idle gap. However, the middle of each long execution segment still uses stale visual feedback. $H$ is the planned action horizon, $e$ is the number of open-loop steps executed, $K$ is the interval between replans, and $d$ is the SmolVLA compute delay.}
   \label{fig:problem}
 \end{figure}
 
