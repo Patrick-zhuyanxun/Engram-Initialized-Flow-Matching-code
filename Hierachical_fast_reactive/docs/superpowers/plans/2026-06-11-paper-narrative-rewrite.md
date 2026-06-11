@@ -25,7 +25,23 @@
 Run:
 
 ```bash
-rg -n "HuggingFaceVLA/smolvla_libero|lerobot_policy_hfrvla|observation\\.extra|checkpoints/|hfrvla_fwr_chunk_generated_seq2_b1024p3_50k|smolvla_libero|z_\\{\\\\mathrm\\{goal\\}\\}|z_\\{\\\\mathrm\\{phase\\}\\}|z_goal|z_phase|k_idx_norm|policy\\.|vlm_model_name|expert_width_multiplier|num_vlm_layers|load_vlm_weights" \
+rg -n -F \
+  -e "HuggingFaceVLA/smolvla_libero" \
+  -e "lerobot_policy_hfrvla" \
+  -e "observation.extra" \
+  -e "checkpoints/" \
+  -e "hfrvla_fwr_chunk_generated_seq2_b1024p3_50k" \
+  -e "smolvla_libero" \
+  -e 'z_{\mathrm{goal}}' \
+  -e 'z_{\mathrm{phase}}' \
+  -e "z_goal" \
+  -e "z_phase" \
+  -e "k_idx_norm" \
+  -e "policy." \
+  -e "vlm_model_name" \
+  -e "expert_width_multiplier" \
+  -e "num_vlm_layers" \
+  -e "load_vlm_weights" \
   paper/src/main.tex \
   paper/src/main_zh.tex \
   paper/targets/nycu_thesis/latex/Sections/4.Methodology.tex \
