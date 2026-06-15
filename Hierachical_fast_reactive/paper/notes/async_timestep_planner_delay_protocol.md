@@ -13,7 +13,7 @@ the split-system semantics inside the HFRVLA policy plugin:
 - On arrival, the executor immediately replaces the active base-action queue.
 - Because `d` control steps have elapsed since observation `o_t`, execution
   starts at `A_t[d:]`, not `A_t[0:]`.
-- The fast wrist residual remains local to the executor and runs every control
+- The fast wrist correction remains local to the executor and runs every control
   step from the current wrist camera and robot state:
 
 ```text
@@ -57,7 +57,7 @@ Interpretation: this is a deterministic control-timestep latency simulation.
 It is meant to isolate whether current wrist feedback reduces degradation when
 slow-planner chunks arrive late. A later deployment version can map the same
 semantics onto a LeRobot async-inference split where the remote server runs
-only the frozen slow planner and the client keeps the fast wrist residual local.
+only the frozen slow planner and the client keeps the fast wrist correction local.
 
 Related notes:
 

@@ -44,7 +44,7 @@
 
 \subsection{Plan-50 execution/replan sweep}
 
-第一個 sweep 固定 planned chunk length 為 50，並令 executed open-loop length 與 replanning interval 共同等於 $K$。此設定測試：當 slow planner 產生長 chunk 時，若 robot 每 $K$ 步才切換或 refresh chunk，fast wrist residual 是否能改善後段 stale actions。
+第一個 sweep 固定 planned chunk length 為 50，並令 executed open-loop length 與 replanning interval 共同等於 $K$。此設定測試：當 slow planner 產生長 chunk 時，若 robot 每 $K$ 步才切換或 refresh chunk，fast wrist correction 是否能改善後段 stale actions。
 
 這個 protocol 特別適合回答「長 planning horizon 下，是否可以用 fast local correction 延緩 stale chunk degradation」。它不代表 full async scheduler，因為 planner 在每次 request 時仍被視為 synchronous available。
 
@@ -56,13 +56,13 @@ Matched chunk sweep 的目的，是確認 \method{} 的改善不是來自「長 
 
 \section{Residual calibration}
 
-Residual calibration sweep 改變 $\alpha$ 與 $\dmax$，觀察 residual authority 對 success rate 的影響。這組實驗回答的問題是：fast residual 應該是有界 local correction，還是可以讓 residual head 自由輸出大幅 action correction。
+Residual calibration sweep 改變 $\alpha$ 與 $\dmax$，觀察 residual authority 對 success rate 的影響。這組實驗回答的問題是：fast wrist correction 應該是有界 local correction，還是可以讓 residual head 自由輸出大幅 action correction。
 
 本文預期的合理區間是 bounded correction。若 $\alpha$ 或 $\dmax$ 過大，residual 可能覆蓋 frozen planner 的 global intent；若過小，則無法修正 chunk 後段累積的局部偏差。因此 calibration sweep 不只是 hyperparameter search，而是驗證 clipped merge 是否為方法必要成分。
 
 \section{Async-timestep planner-delay stress test}
 
-Planner-delay sweep 是本文唯一 async-timestep inference experiment。此實驗中，slow planner 在 step $t$ 發出 request，但 chunk 在 $t+d$ 個 control timesteps 後才可用；execution 從 delayed chunk 的對應 index 開始。Fast wrist residual 仍在 current timestep 執行，因此能利用當前 wrist observation 修正 delayed base action。
+Planner-delay sweep 是本文唯一 async-timestep inference experiment。此實驗中，slow planner 在 step $t$ 發出 request，但 chunk 在 $t+d$ 個 control timesteps 後才可用；execution 從 delayed chunk 的對應 index 開始。Fast wrist correction 仍在 current timestep 執行，因此能利用當前 wrist observation 修正 delayed base action。
 
 這個實驗和 synchronous sweeps 分開報告，因為它測試的是不同 runtime assumption。它不是完整 real-time remote-planner deployment，也不涵蓋任意 compute delays；它是一個受控 stress test，用來檢查 slow chunks late arrival 時，current wrist evidence 是否能降低 disable-fast ablation 的 degradation。
 
@@ -71,7 +71,7 @@ Planner-delay sweep 是本文唯一 async-timestep inference experiment。此實
 以下項目目前不作為 main-text evidence：
 
 \begin{itemize}
-  \item Dual-view DINO fast residual ablation：同時使用 wrist 與 third-person image 的 fast model。
+  \item Dual-view DINO fast correction ablation：同時使用 wrist 與 third-person image 的 fast model。
   \item Latent-context ablation：移除 cached slow-planner context。
   \item Chunk-age/stale-target training：用 delayed base chunks 訓練 residual targets。
   \item No-residual-clip control sweeps：擴展 no-clip controls。

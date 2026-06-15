@@ -14,7 +14,7 @@ Action chunking 是目前常見的折衷。慢速 planner 一次產生一段 act
   \label{fig:problem_schematic}
 \end{figure}
 
-本研究不是要訓練一個更大的 VLA，也不是要改寫完整 real-time scheduler；而是研究一個較窄但可實驗驗證的問題：若 slow VLA planner 已經凍結，是否能在 action 執行前加入一個小型 fast residual module，用目前腕部相機看到的局部視覺證據修正下一個 base action？
+本研究不是要訓練一個更大的 VLA，也不是要改寫完整 real-time scheduler；而是研究一個較窄但可實驗驗證的問題：若 slow VLA planner 已經凍結，是否能在 action 執行前加入一個小型 fast wrist correction module，用目前腕部相機看到的局部視覺證據修正下一個 base action？
 
 \section{待解決問題}
 
@@ -24,23 +24,23 @@ Action chunking 是目前常見的折衷。慢速 planner 一次產生一段 act
 VLA 推論昂貴，因此需要 action chunking；action chunking 降低 planner 呼叫頻率，但 chunk 後段動作會因 observation 過期而失準；若此失準主要反映 gripper-relative local geometry 的變化，腕部相機可能提供足夠的當下證據；因此可以用有界 residual correction 補償 frozen planner 的下一個 action。
 \end{quote}
 
-這個問題與單純比較模型大小不同。若 \smolvla{} 每一步都重規劃，slow planner 已經能看見最新 observation，fast residual 不一定有幫助，甚至可能破壞原本正確的 action。因此本文評估時必須明確區分 planning horizon、execution horizon 與 replan interval，而不能把 default every-step replanning 當作所有 chunk 設定的 baseline。
+這個問題與單純比較模型大小不同。若 \smolvla{} 每一步都重規劃，slow planner 已經能看見最新 observation，fast wrist correction 不一定有幫助，甚至可能破壞原本正確的 action。因此本文評估時必須明確區分 planning horizon、execution horizon 與 replan interval，而不能把 default every-step replanning 當作所有 chunk 設定的 baseline。
 
 \section{研究問題}
 
 本論文的核心研究問題為：
 
 \begin{quote}
-在凍結 \smolvla{} slow planner 的情況下，小型 wrist-camera residual module 是否能改善 frozen VLA action chunk 的執行，特別是在 execution interval 變長或 planner chunk 延遲抵達的 stale-action regime？
+在凍結 \smolvla{} slow planner 的情況下，小型 fast wrist correction module 是否能改善 frozen VLA action chunk 的執行，特別是在 execution interval 變長或 planner chunk 延遲抵達的 stale-action regime？
 \end{quote}
 
 此核心問題拆成五個子問題：
 
 \begin{enumerate}
   \item 在同步 plan=50 execution/replan sweep 中，\method{} 相對 \smolvla{} 於哪些 execution interval 有成功率改善？
-  \item 在同步 matched chunk sweep 中，當 planning、execution 與 replan interval 均為 $K$ 時，wrist residual correction 是否仍有幫助？
+  \item 在同步 matched chunk sweep 中，當 planning、execution 與 replan interval 均為 $K$ 時，fast wrist correction 是否仍有幫助？
   \item 殘差合併中的 $\alpha$ 與 $\delta_{\max}$ 如何影響成功率？
-  \item 在 async-timestep planner-delay stress test 中，fast residual 是否能減緩 chunk late arrival 的退化？
+  \item 在 async-timestep planner-delay stress test 中，fast wrist correction 是否能減緩 chunk late arrival 的退化？
   \item 在缺少 multi-seed、causal vision ablations 與 real-robot validation 的情況下，目前結果能支持哪些 claim，不能支持哪些 claim？
 \end{enumerate}
 
@@ -49,8 +49,8 @@ VLA 推論昂貴，因此需要 action chunking；action chunking 降低 planner
 本文貢獻如下：
 
 \begin{enumerate}
-  \item \textbf{凍結 VLA action chunk 的腕部相機殘差修正。} 本研究使用針對 LIBERO 適配的 \smolvla{} 作為 frozen slow planner，只訓練小型 fast residual module，讓研究焦點集中在 execution-time correction。
-  \item \textbf{可重現 LeRobot pipeline。} 本研究建立資料記錄、cache construction、fast residual training、artifact packaging 與 eval registry。Exact package names 與 paths 集中列於 appendix。
+  \item \textbf{凍結 VLA action chunk 的快速腕部修正。} 本研究使用針對 LIBERO 適配的 \smolvla{} 作為 frozen slow planner，只訓練小型 fast wrist correction module，讓研究焦點集中在 execution-time correction。
+  \item \textbf{可重現 LeRobot pipeline。} 本研究建立資料記錄、cache construction、fast correction training、artifact packaging 與 eval registry。Exact package names 與 paths 集中列於 appendix。
   \item \textbf{明確拆分 planning 與 execution protocol。} 所有結果皆記錄 planned chunk length、executed open-loop length 與 replanning interval，避免錯誤比較不同 runtime contract。
   \item \textbf{Success-rate-first 的實驗紀錄。} 本論文以 LIBERO-Spatial success rate 作為主指標，並將 calibration、async delay 與未完成 ablations 分層呈現。
 \end{enumerate}

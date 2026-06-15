@@ -3,12 +3,19 @@
 Use `lerobot-train` for training and `lerobot-eval` for evaluation.
 Recording uses a wrapper script that writes a standard LeRobotDataset v3.
 
+Current docs map:
+- Start with `docs/README.md` to identify the latest maintained record.
+- Use this file for operational training/eval commands.
+- Use `docs/hfrvla_experiment_briefing.html` for the paper-facing visual briefing.
+- Edit `docs/presentations/hfrvla-training-open-slide/slides/hfrvla-training/index.tsx` and rebuild when the presentation content changes.
+- Retired GRU/gate/contact and Stage A/B/C gated-loss notes are under `docs/archive/`.
+
 Active scripts:
 - `scripts/train_smolvla_libero_baseline.sh` - optional fallback to fine-tune `lerobot/smolvla_base` on LIBERO if the published checkpoint is unsuitable
 - `scripts/record_hfrvla_libero.py` - one-shot or sharded recording (`--ep-from/--ep-to`)
 - `scripts/merge_hfrvla_shards_fast.py` - offline stitcher for parallel shards (file/metadata only, no re-encode)
 - `scripts/build_hfrvla_fastcache.py` - optional derived mmap cache for faster offline HFRVLA training
-- `scripts/generate_training_presentation.py` - builds the open-slide deck and bundles it into `docs/training_presentation.html`
+- `scripts/generate_training_presentation.py` - builds the open-slide deck and bundles it into `docs/hfrvla_experiment_briefing.html`; `docs/training_presentation.html` remains a compatibility redirect
 - `scripts/train_hfrvla_libero_merged.sh` - pinned training entrypoint for the verified merged HFRVLA dataset
 - `scripts/train_via_lerobot.py` - wrapper around `lerobot-train` that adds curriculum control
 - `scripts/package_hfrvla_checkpoint.py` - bundle SmolVLA + fast weights into a `lerobot-eval` checkpoint dir (`--disable-fast` for alignment tests)
@@ -22,10 +29,10 @@ Legacy scripts live in `scripts/legacy/`; see `scripts/legacy/README.md`.
 Codex-local automation:
 - `.agents/plugins/marketplace.json` installs the repo-local `hfrvla-training-docs-hook` plugin.
 - `docs/presentations/hfrvla-training-open-slide/` is the open-slide workspace for the training deck; edit `slides/hfrvla-training/index.tsx` for visual/content changes.
-- `.agents/plugins/plugins/hfrvla-training-docs-hook/hooks.json` runs after Codex file edits and rebuilds `docs/training_presentation.html` by calling the open-slide generator when this file, the generator, or the open-slide deck/viewer source changed.
+- `.agents/plugins/plugins/hfrvla-training-docs-hook/hooks.json` runs after Codex file edits and rebuilds `docs/hfrvla_experiment_briefing.html` by calling the open-slide generator when the generator, eval registry, or open-slide deck/viewer source changed.
 - Run `python3 scripts/generate_training_presentation.py --check` before committing documentation changes if you want an explicit freshness check.
 
-Spec and plan:
+Historical spec and plan:
 - `docs/superpowers/specs/2026-05-15-hfrvla-lerobot-native-design.md`
 - `docs/superpowers/plans/2026-05-15-hfrvla-lerobot-native.md`
 
@@ -313,10 +320,11 @@ module boundary, so the cache can stay compact while training remains
 `float32` unless AMP is enabled. Fast-cache schema v3 adds
 `observation.extra.a_base_chunk=(50,7)`, `observation.extra.chunk_step_idx=(1,)`,
 optional `observation.extra.chunk_age_steps=(1,)` / `chunk_age_norm=(1,)`,
-and top-level `chunk_len=50` metadata for chunk-aware FWR. New recordings store
-the generated SmolVLA chunk directly; older recordings without these fields are
-still supported by reconstructing chunks from frame-level `a_base`. It keeps the schema
-v2 static Stage B labels, `observation.extra.y_correct` and
+and top-level `chunk_len=50` metadata for the chunk-aware HFRVLA correction
+mode. New recordings store the generated SmolVLA chunk directly; older
+recordings without these fields are still supported by reconstructing chunks
+from frame-level `a_base`. It keeps the schema v2 static Stage B labels,
+`observation.extra.y_correct` and
 `observation.extra.y_preserve`, plus their offline error thresholds in
 `meta.json`. Schema v1/v2 caches still load for older modes, but
 `RESIDUAL_MERGE_MODE=fast_wrist_chunk` requires schema v3 chunk fields. The
@@ -353,37 +361,6 @@ Expected log line:
 
 ```text
 [hfrvla-train] fast-cache dataset backend enabled root=...
-```
-
-Stage C adds a second fast-cache root built from successful closed-loop
-`zero_fast` rollouts. Record the rollout dataset, then build its cache with
-static preserve labels:
-
-```bash
-~/Robotic_infra/lerobot/.venv/bin/python scripts/record_zero_fast_rollouts.py \
-    --policy-path checkpoints/hfrvla_zero_fast_packaged \
-    --out-root checkpoints/HFRVLA_libero_v1_zero_fast_rollouts \
-    --task-suite libero_spatial \
-    --task-ids 0,1,2,3,4,5,6,7,8,9 \
-    --episodes-per-task 10
-
-~/Robotic_infra/lerobot/.venv/bin/python scripts/build_hfrvla_fastcache.py \
-    --source-root checkpoints/HFRVLA_libero_v1_zero_fast_rollouts \
-    --cache-root checkpoints/HFRVLA_libero_v1_fastcache_v2_rollouts \
-    --static-y-preserve
-```
-
-Train with both roots by setting `HFRVLA_FASTCACHE_ROLLOUT_ROOT`; leaving it
-unset preserves the Stage A/B single-cache behavior:
-
-```bash
-HFRVLA_DATASET_BACKEND=fastcache \
-HFRVLA_FASTCACHE_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_v2 \
-HFRVLA_FASTCACHE_ROLLOUT_ROOT=checkpoints/HFRVLA_libero_v1_fastcache_v2_rollouts \
-USE_STAGE_B=true \
-LOSS_LAMBDA_PRESERVE_ZERO=3.0 \
-SEQ_LEN=4 \
-scripts/train_hfrvla_libero_merged.sh
 ```
 
 If `HFRVLA_DATASET_BACKEND` is unset, the launcher keeps the LeRobot-native
@@ -499,15 +476,17 @@ therefore passed as `--policy.optimizer_*` fields, not top-level
 | `--policy.curriculum_warmup_steps` | 1000 | Stage 0 length: delta only, heads frozen. |
 | `--policy.curriculum_joint_steps` | 49000 | Stage 1 length: all losses active. |
 | `--policy.curriculum_refine_steps` | 10000 | Stage 2 length: LR is reduced by 10x at entry. |
-| `--policy.seq_len` | 8 | Training window length; gated mode consumes the full window, FWR-v1 requires at least 2 frames for previous/current conditioning, and FWR-v2 chunk mode uses the current frame plus the v3 full base chunk. |
+| `--policy.seq_len` | 8 | Training window length; gated mode consumes the full window, the current-step HFRVLA correction mode requires at least 2 frames for previous/current conditioning, and the chunk-aware HFRVLA mode uses the current frame plus the v3 full base chunk. |
 
-### Fast Wrist Residual modes
+### HFRVLA correction modes
 
-Set `RESIDUAL_MERGE_MODE=fast_wrist` to train the FWR-v1 feed-forward
-correction head. The deprecated `a2c2` value is still accepted as an alias for
-old scripts and checkpoints. This mode removes the gate, contact head, GRU,
-conservative preserve losses, and Stage B labels from the objective. It
-supervises both the raw current-step residual and the deployed merged action:
+Set `RESIDUAL_MERGE_MODE=fast_wrist` to train the current-step HFRVLA
+feed-forward correction head. Historical notes and run names may call this
+`FWR-v1`; treat that as provenance, not a public method name. The deprecated
+`a2c2` value is still accepted as an alias for old scripts and checkpoints.
+This mode removes the gate, contact head, GRU, conservative preserve losses,
+and Stage B labels from the objective. It supervises both the raw current-step
+residual and the deployed merged action:
 
 ```text
 delta_target = action_t - a_base_t
@@ -525,8 +504,9 @@ At inference it applies only the configured clipped residual:
 a_final = a_base + FAST_RESIDUAL_ALPHA * clip(delta_pred)
 ```
 
-FWR-v1 can train from the frame-level v2/v3 fast-cache and uses a two-frame
-training window for previous-action conditioning:
+The current-step HFRVLA correction mode can train from the frame-level v2/v3
+fast-cache and uses a two-frame training window for previous-action
+conditioning:
 
 ```bash
 RUN_NAME=hfrvla_fwr_wrist_seq2 \
@@ -543,10 +523,12 @@ STEPS=10000 \
 scripts/run_hfrvla_training_foreground.sh
 ```
 
-Set `RESIDUAL_MERGE_MODE=fast_wrist_chunk` for FWR-v2. This mode requires a
-schema v3 full-chunk cache and lets the residual head attend over all 50 frozen
-SmolVLA base actions using action, chunk-relative, and cosine features while
-still predicting only the current-step `delta_a`:
+Set `RESIDUAL_MERGE_MODE=fast_wrist_chunk` for the chunk-aware HFRVLA
+correction mode. Historical notes and run names may call this `FWR-v2`; keep
+that label only for provenance. This mode requires a schema v3 full-chunk cache
+and lets the residual head attend over all 50 frozen SmolVLA base actions using
+action, chunk-relative, and cosine features while still predicting only the
+current-step `delta_a`:
 
 ```bash
 RUN_NAME=hfrvla_fwr_chunk_seq2 \
@@ -603,7 +585,7 @@ After the 2026-05-29 matched `plan=50`, `exec/replan=8` evaluation, the
 single-run default is `LR=3e-4` and `WEIGHT_DECAY=1e-5`.
 
 Run names use the `hfrvla_*` prefix, for example
-`hfrvla_lr3e_4_wd1e_5_b512_50k`. New FWR runs should set
+`hfrvla_lr3e_4_wd1e_5_b512_50k`. New HFRVLA correction runs should set
 `RESIDUAL_MERGE_MODE=fast_wrist` or `fast_wrist_chunk`; historical sweep
 scripts may still carry the deprecated `a2c2` alias for older checkpoints.
 
@@ -734,7 +716,7 @@ SmolVLA action chunk before replanning. The original `smolvla_libero` config
 uses `n_action_steps=1`, so it replans every environment step. This explains why
 the HFRVLA base-only rows are only 23/50 = 46.0% on spatial while original
 SmolVLA reaches 38/50 = 76.0% on the same 5-episode-per-task spatial protocol.
-That gap is not caused by the fast residual; it is the action-chunk execution
+That gap is not caused by the fast correction path; it is the action-chunk execution
 regime the correction model is meant to improve.
 
 Follow-up matched-chunk eval on 2026-05-27:
@@ -768,7 +750,7 @@ chunk experiment.
 Recommended architecture experiments after this baseline:
 
 1. **Temporal wrist visual pooling:** keep `seq_len=2` or test `seq_len=4`, but
-   explicitly feed previous/current wrist DINO patches into the FWR-v1
+   explicitly feed previous/current wrist DINO patches into the `fast_wrist`
    module. The current implementation uses previous action context, not a true
    previous-wrist visual context.
 2. **Alpha-calibrated residual objective:** keep the no-gate architecture, but
@@ -841,8 +823,9 @@ The planner-delay eval simulates slow VLA chunk generation latency with
 discrete async-timestep semantics. At request step `t`, the slow planner
 observes `o_t` and starts generating `A_t`. At ready step `t+d`, the chunk
 replaces the active execution queue immediately. Because `d` control steps have
-elapsed, execution starts from `A_t[d]`, not `A_t[0]`. The wrist residual is not
-delayed and continues using current wrist feedback at every control step.
+elapsed, execution starts from `A_t[d]`, not `A_t[0]`. The fast wrist correction
+path is not delayed and continues using current wrist feedback at every control
+step.
 
 Run a smoke check with:
 
@@ -894,54 +877,15 @@ visible, the saved packaged config can contain `"device": "cpu"`. For formal GPU
 eval, pass `--policy.device=cuda` to `lerobot-eval` or repackage in an
 environment where CUDA is visible.
 
-### Legacy gated residual objective knobs
+### Retired gated residual objective
 
-The fast module is trained against the same action form used at deployment:
-`a_final = a_base + gate * clip(delta_a)`. Do not train the residual head to
-chase large raw `a_expert - a_base` values that inference will later clip away.
-This update is the main fix after the failed 60k run: the old objective made
-offline residual MSE improve while closed-loop eval got worse, because the loss
-did not match the clipped/gated action actually sent to LIBERO.
+The legacy `RESIDUAL_MERGE_MODE=gated` path, Stage A/B/C losses, learned gate,
+GRU state, and contact auxiliary head are retained in code only for old
+checkpoint provenance. They are not the active training recipe. The historical
+notes were moved to `docs/archive/loss-redesign-202605/`.
 
-| Flag | Default | Description |
-|---|---|---|
-| `--policy.loss_delta_target_clip` | `true` | Clips the supervised delta target to the deployable residual range. |
-| `--policy.gate_improvement_margin` | `0.5` | Requires the clipped residual to clear this summed-squared-error margin before the Stage A gate target opens. |
-| `--policy.loss_lambda_final` | `1.0` | MSE on the deployed merged action `a_final`. |
-| `--policy.loss_lambda_preserve` | `0.5` | Penalizes corrections whose merged action is worse than the frozen base action. |
-| `--policy.loss_lambda_gate_prior` | `0.10` | Stage A rate term on mean gate. |
-| `--policy.loss_lambda_preserve_zero` | `1.0` | Stage A zero-target penalty on frames with `err_before < err_preserve_thresh`. |
-| `--policy.err_preserve_thresh` | `0.5` | Stage A preserve threshold in summed-squared action error units. |
-
-These knobs are retained for the legacy `RESIDUAL_MERGE_MODE=gated` path. They
-are not used by FWR modes, whose loss is the deployment-aligned objective in
-§5: raw residual SmoothL1 plus final-action SmoothL1 and optional residual/clip
-penalties.
-
-Stage B replaces the Stage A loss with the five-term rate-distortion objective
-from `docs/hfrvla_objective_debate_20260521.md`: `correct`, `preserve_zero`,
-`rate`, focal `gate`, and temporal `smooth`. It uses the static fast-cache
-labels rather than training-time thresholds.
-
-| Flag | Default | Description |
-|---|---|---|
-| `--policy.use_stage_b_objective` | `false` | Enables the Stage B loss branch; requires fast-cache schema v2/v3 labels. |
-| `--policy.loss_lambda_correct` | `1.0` | SmoothL1 residual correction loss on `y_correct=1` frames only. |
-| `--policy.loss_lambda_rate` | `0.5` | Mean gate plus batch budget hinge. |
-| `--policy.loss_lambda_smooth` | `0.2` | Smoothness penalty on `gate * clip(delta_a)` across the GRU window. |
-| `--policy.focal_gamma` | `2.0` | Focal BCE gamma for the static gate label. |
-| `--policy.focal_pos_weight` | `4.0` | Positive-class weight for correction events. |
-| `--policy.gate_task_budget` | `0.25` | Batch-level mean-gate budget hinge threshold. |
-
-The training presentation now splits this into three diagrams so the data flow
-is easier to audit:
-
-- `Training I/O`: separates fast-module inputs from expert-only supervision
-  targets.
-- `Fast module outputs`: shows the current FWR `delta_a` output and the
-  `a_final = a_base + alpha * clip(delta_a)` merge.
-- `Learning objective`: distinguishes the current deployment-aligned FWR loss
-  from the legacy gated losses.
+For new runs, use `RESIDUAL_MERGE_MODE=fast_wrist` or `fast_wrist_chunk` and
+the deployment-aligned HFRVLA correction loss in §5.
 
 ### Output structure
 
@@ -1023,8 +967,8 @@ done
 
 | Stage | Boundary | Expected behavior |
 |---|---|---|
-| 0 warmup | `step in [0, warmup)` | Gate/contact heads frozen, lambdas are 0, `loss == delta`. |
-| 1 joint | `step in [warmup, warmup+joint)` | All losses contribute; expect a small spike at the boundary, then descent. |
+| 0 warmup | `step in [0, warmup)` | For HFRVLA correction modes, watch `delta`, `final`, `delta_norm`, `target_delta_norm`, and `delta_clip_fraction`; gated-head lambdas do not affect these losses. |
+| 1 joint | `step in [warmup, warmup+joint)` | HFRVLA correction loss terms should stay finite; there should be no gate/contact metric dependency in active correction modes. |
 | 2 refine | `step >= warmup+joint` | `[curriculum] step <N>: entered Stage 2 - LR x 0.1` is printed exactly once. |
 
 If the boundary log is missing, check `scripts/train_via_lerobot.py`; the wrapper may have stopped intercepting `update_policy`.
@@ -1042,22 +986,19 @@ slow path is LeRobot/HuggingFace Dataset reading `observation.extra.dino_patches
 With `seq_len=8`, each sample reads 8 frames of `(196, 384)` float32 DINO
 patches, or roughly 2.4 MB before Arrow/Python/Tensor overhead.
 
-The apparent loss jump at `step ~= WARMUP_STEPS` is expected accounting unless
-the gradient norm also explodes. Stage 0 logs only `L_delta` because
-`loss_lambda_gate=0`, `loss_lambda_contact=0`, and the conservative objective
-lambdas are zeroed. At Stage 1 entry, the total loss becomes:
+For active HFRVLA correction modes, interpret the loss as:
 
 ```text
-loss = L_delta + L_gate + L_final + 0.5 * L_preserve
-       + 0.10 * L_gate_prior + L_preserve_zero + 0.1 * L_contact
+loss = lambda_delta * SmoothL1(delta_pred, action - a_base)
+     + lambda_final * SmoothL1(a_base + alpha * clip(delta_pred), action)
+     + lambda_residual * mean((alpha * clip(delta_pred))^2)
+     + lambda_clip * mean(relu(abs(delta_pred) - residual_cap))
 ```
 
-Freshly unfrozen BCE heads usually contribute about `0.69 + 0.07`, so a
-total-loss jump at `step 1000` matches the configured curriculum. After the
-conservative objective update, also watch `final`, `preserve`, and
-`gate_prior`: a high `preserve` value means the fast module is still learning
-corrections that would harm the frozen base policy. Track component losses
-before treating the total-loss discontinuity as model divergence.
+`delta_clip_fraction` should be monitored with closed-loop eval results. A very
+high clip fraction means the head is often asking for residuals outside the
+deployment cap; low training loss alone is not enough evidence that the policy
+will behave well in LIBERO.
 
 Short correction-head preset:
 

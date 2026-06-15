@@ -56,7 +56,7 @@ paper/targets/nycu_thesis/latex/build/main.pdf
    - HFRVLA system overview.
    - Frozen SmolVLA planner.
    - Wrist DINO feature extraction.
-   - Fast residual module.
+   - Fast wrist correction module.
    - Training objective and residual merge.
 4. Implementation
    - LeRobot policy plugin.

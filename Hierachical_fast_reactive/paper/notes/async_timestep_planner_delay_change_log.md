@@ -4,7 +4,7 @@ Updated: 2026-06-08
 
 Purpose: make the planner-delay stress test match the intended split-system
 setup without changing LeRobot source code. The simulated server side is the
-frozen slow planner; the client side keeps HFRVLA wrist residual correction
+frozen slow planner; the client side keeps HFRVLA fast wrist correction
 local at every control step.
 
 ## Code Changes
@@ -24,7 +24,7 @@ local at every control step.
     - chunk `A_t` becomes ready at `t+d`;
     - the active queue is replaced immediately when ready;
     - execution starts from `A_t[d]`, not `A_t[0]`;
-    - fast wrist residual still runs locally every `select_action` step.
+    - fast wrist correction still runs locally every `select_action` step.
   - Added debug stats for request, ready, activation, chunk start index, dropped
     old queue steps, and bounded event traces.
 

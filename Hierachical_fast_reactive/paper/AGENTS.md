@@ -10,8 +10,9 @@ entire directory as one paper.
 
 | Path | Purpose |
 |---|---|
-| `src/` | Bilingual workshop/arXiv-style paper source. Keep `main.tex` and `main_zh.tex` synchronized when changing shared claims. |
+| `src/` | Buildable bilingual long-paper source. Keep `main.tex` and `main_zh.tex` synchronized when changing shared claims. |
 | `targets/` | Target-specific manuscripts. Use this for NYCU thesis, conferences, journal versions, proposals, and defense-specific variants. |
+| `targets/long_paper/` | Maintained dashboard for the long paper. Current buildable source remains `paper/src/main.tex` and `paper/src/main_zh.tex`. |
 | `targets/nycu_thesis/` | Maintained NYCU master's thesis target. The current buildable source is `targets/nycu_thesis/latex/main.tex`. |
 | `notes/` | Shared research notes that can feed multiple targets. These are not final manuscripts. |
 | `deliberations/` | Outputs from academic skills, subagents, debate/review rounds, claim audits, citation audits, and decision records. |
@@ -121,7 +122,7 @@ Before editing a target manuscript:
 Build commands:
 
 ```bash
-# Workshop/arXiv bilingual paper
+# Long paper, English + Traditional Chinese
 cd paper && bash build_bilingual.sh
 
 # NYCU thesis target
@@ -141,6 +142,18 @@ bash paper/thesis/build_thesis.sh
   `paper/targets/nycu_thesis/latex/build/main.pdf`.
 - Administrative fields such as advisor, department, official degree name, and
   defense date must remain placeholders until confirmed.
+
+## Manuscript Split
+
+Maintain the long paper and NYCU thesis separately at the manuscript level. They
+share notes, registry-backed results, figures, and bibliography entries, but
+their LaTeX source and narrative depth should remain separate:
+
+- Long paper: concise claim-driven manuscript in `paper/src/`, controlled by
+  `paper/targets/long_paper/README.md`.
+- NYCU thesis: degree-oriented manuscript in
+  `paper/targets/nycu_thesis/latex/`, controlled by
+  `paper/targets/nycu_thesis/README.md`.
 
 ## Do Not
 

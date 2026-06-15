@@ -18,7 +18,7 @@ Current claim boundary:
 - Do not promote provisional success-rate trends into final paper claims.
 - Keep detailed success-rate charts and tables in the HTML dashboard until the
   user decides the experiment set is final.
-- Preserve the current method framing: wrist-camera fast residual correction on
+- Preserve the current method framing: fast wrist correction on
   top of frozen `HuggingFaceVLA/smolvla_libero` context, deployed as
   `a_final = a_base + alpha * clip(delta_a)`.
 

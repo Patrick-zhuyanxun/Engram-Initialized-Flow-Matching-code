@@ -7,7 +7,7 @@
 This document is the **single source of truth** for implementation. Any
 deviation must be flagged and justified.
 
-**Current paper mainline.** Use Fast Wrist Residual (FWR), especially
+**Current paper mainline.** Use HFRVLA's fast wrist correction path, especially
 `residual_merge_mode="fast_wrist_chunk"` for the schema-v3 generated-chunk
 cache. The deployed merge is:
 
@@ -25,8 +25,8 @@ default paper method unless the project explicitly reactivates that line.
 
 Implement a LeRobot plugin called `lerobot_policy_hfrvla` that:
 1. Wraps a frozen pretrained SmolVLA policy (System 2).
-2. Adds a small trainable Fast Reactive Module (System 1) using DINOv3 ViT-S/16 wrist features.
-3. Computes a corrected action at every control step, preserving SmolVLA's base action and applying safety limits only to the fast residual. The current Fast Wrist Residual modes use `a_final = a_base + alpha · clip(δa)` with no gate, contact head, or GRU. The gated merge `a_final = a_base + g · clip(δa)` is legacy-only.
+2. Adds a small trainable fast wrist correction module (System 1) using DINOv3 ViT-S/16 wrist features.
+3. Computes a corrected action at every control step, preserving SmolVLA's base action and applying safety limits only to the fast correction. The current HFRVLA correction modes use `a_final = a_base + alpha · clip(δa)` with no gate, contact head, or GRU. The gated merge `a_final = a_base + g · clip(δa)` is legacy-only.
 4. Trains end-to-end (System 1 only) on LIBERO demos via offline decomposition of expert vs. SmolVLA actions.
 5. Is registered through entry points so `lerobot-train --policy.type=hfrvla` works.
 
@@ -70,7 +70,7 @@ Hierachical_fast_reactive/scripts/train_hfrvla_libero_merged.sh
 [project]
 name = "lerobot_policy_hfrvla"
 version = "0.1.0"
-description = "LeRobot plugin: Hierarchical Fast-Reactive VLA with DINOv3 wrist-camera residual on frozen SmolVLA."
+description = "LeRobot plugin: Hierarchical Fast-Reactive VLA with DINOv3 wrist-camera correction on frozen SmolVLA."
 requires-python = ">=3.12"
 dependencies = [
     "lerobot>=0.5.0",
@@ -146,7 +146,7 @@ class HFRVLAConfig(SmolVLAConfig):
     focal_pos_weight: float = 4.0
     gate_task_budget: float = 0.25
 
-    # Fast Wrist Residual modes. "gated" preserves the original HFRVLA path.
+    # HFRVLA fast wrist correction modes. "gated" preserves the original HFRVLA path.
     # "fast_wrist" builds the stateless previous/current correction head.
     # "fast_wrist_chunk" attends over the full frozen base action chunk.
     # Deprecated "a2c2" aliases load as "fast_wrist".
@@ -155,8 +155,8 @@ class HFRVLAConfig(SmolVLAConfig):
     fast_residual_use_latent_context: bool = True
 
     # Training-time window length. Gated mode consumes the full sequence.
-    # FWR-v1 requires seq_len >= 2 and uses the previous/current pair.
-    # FWR-v2 chunk mode uses the current frame plus a v3 full-chunk cache.
+    # The current-step correction mode requires seq_len >= 2 and uses the previous/current pair.
+    # The chunk-aware correction mode uses the current frame plus a v3 full-chunk cache.
     seq_len: int = 8
 
     # Hooks on SmolVLA
@@ -280,9 +280,9 @@ Total trainable parameters of `FastReactiveModule` (excluding the frozen DINOv3)
 
 ## 5A ·  fast_wrist_residual.py
 
-This is the simplified Fast Wrist Residual path for the paper comparison. It keeps
-the frozen SmolVLA slow planner and wrist DINO features, but removes the gated
-HFRVLA temporal machinery.
+This is the simplified HFRVLA fast wrist correction path for the paper
+comparison. It keeps the frozen SmolVLA slow planner and wrist DINO features,
+but removes the gated HFRVLA temporal machinery.
 
 ### 5A.1 Interface
 
@@ -337,12 +337,12 @@ prev_delta_next = fast_residual_alpha * clip(delta_pred)
 The first intended run uses `seq_len=2`, which means current plus one previous
 frame. Episode starts use the existing LeRobot window clamp behavior.
 
-`FastWristChunkResidualModule` is the FWR-v2 mode. It receives
+`FastWristChunkResidualModule` is the chunk-aware HFRVLA correction mode. It receives
 `a_base_chunk: (B, 50, 7)` and `chunk_step_idx: (B, 1)`, builds action tokens
 from `a_base_chunk[j]`, `j_norm`, `(j-k)/(K-1)`, `abs(j-k)/(K-1)`, and
 `cos(a_base_chunk[j], a_base_chunk[k])`, then cross-attends over the 50 tokens
-to predict the current-step residual. The merge and deployment-aligned FWR loss
-remain the same as FWR-v1.
+to predict the current-step residual. The merge and deployment-aligned HFRVLA
+correction loss remain the same as the current-step mode.
 
 ---
 
@@ -401,7 +401,7 @@ def select_action(self, batch, **kwargs):
           use planner_delay_fallback (main experiment: hold_last).
        6. Pop or hold a_base, then run self.fast(wrist_rgb, proprio, a_base,
           k_idx, z_goal, z_phase, h_state) unless inference_disable_fast=True.
-       7. Compute a_final via the merge formula, clamping only the fast residual.
+       7. Compute a_final via the merge formula, clamping only the fast correction.
        8. Return a_final or, when inference_disable_fast=True, return a_base.
     """
 ```
@@ -484,7 +484,7 @@ fastcache is built with `--static-y-preserve`, so every rollout frame has
 cache and rollout cache by setting `HFRVLA_FASTCACHE_ROLLOUT_ROOT`; leaving it
 unset preserves the Stage A/B single-cache path.
 
-**Fast Wrist Residual (`residual_merge_mode="fast_wrist"` or
+**HFRVLA fast wrist correction (`residual_merge_mode="fast_wrist"` or
 `"fast_wrist_chunk"`)** bypasses Stage A/B/C losses and uses a deployment-
 aligned current-step objective:
 
@@ -596,9 +596,9 @@ Returns dicts shaped exactly as expected by `HFRVLAPolicy.forward(...)` (see 6.3
 
 Supports **sequence sampling** at read time: each `__getitem__` returns
 `seq_len` consecutive steps ending at the sampled frame. Gated mode consumes the
-full window. FWR-v1 requires `seq_len >= 2` and uses only the previous and
-current frames. FWR-v2 chunk mode reads the current window element plus
-`a_base_chunk` and `chunk_step_idx` from schema v3.
+full window. The current-step correction mode requires `seq_len >= 2` and uses
+only the previous and current frames. The chunk-aware correction mode reads the
+current window element plus `a_base_chunk` and `chunk_step_idx` from schema v3.
 
 ---
 
@@ -616,7 +616,7 @@ monkey-patches `lerobot-train` to call `policy.set_training_step(step)` for the
 curriculum and to swap in `HFRVLAFastCacheDataset` when
 `HFRVLA_DATASET_BACKEND=fastcache`.
 
-For the Fast Wrist Residual v1 path, set:
+For the current-step HFRVLA correction path, set:
 
 ```bash
 RESIDUAL_MERGE_MODE=fast_wrist
@@ -624,7 +624,7 @@ SEQ_LEN=2
 FAST_RESIDUAL_ALPHA=1.0
 ```
 
-For chunk-aware FWR-v2, build a schema v3 fast-cache and set
+For the chunk-aware HFRVLA correction path, build a schema v3 fast-cache and set
 `RESIDUAL_MERGE_MODE=fast_wrist_chunk`.
 
 `get_optim_params()` must still return only trainable fast-module parameters.
@@ -649,7 +649,7 @@ After Codex returns code:
 - [ ] `policy.fast.count_parameters() < 10_000_000`.
 - [ ] Forward-hook on SmolVLA captures non-None `_zgoal_cache` and `_zphase_cache` after a forward pass.
 - [ ] `_compute_losses` returns finite `delta`, `gate`, `final`, `preserve`, `gate_prior`, optional `contact`, and `loss` scalars on a synthetic batch.
-- [ ] FWR modes return finite `delta` and `loss` scalars without gate/contact metrics.
+- [ ] HFRVLA correction modes return finite `delta` and `loss` scalars without gate/contact metrics.
 - [ ] `select_action()` on a synthetic single-step batch returns an action of correct shape with no NaN.
 - [ ] DINOv3 backbone forward on `(1, 3, 224, 224)` returns `(1, 196, 384)`.
 - [ ] Gate target uses `stop_grad(clip(delta_a))` and opens only when the clipped residual clears `gate_improvement_margin`.

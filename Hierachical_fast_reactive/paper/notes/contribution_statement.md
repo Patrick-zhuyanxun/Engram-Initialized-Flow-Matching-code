@@ -4,14 +4,14 @@
 
 ## One-Sentence Summary
 
-HFRVLA studies whether a small wrist-camera residual module can correct frozen
+HFRVLA studies whether a small fast wrist correction module can correct frozen
 SmolVLA action chunks at execution time, improving closed-loop LIBERO
 manipulation without fine-tuning the slow VLA planner.
 
 ## Current Method Position
 
-The current paper direction is the A2C2-Wrist baseline, not the older gated
-HFRVLA path:
+The current paper direction is HFRVLA's fast wrist correction path, not the
+older gated HFRVLA path:
 
 - Slow planner: frozen `HuggingFaceVLA/smolvla_libero`.
 - Fast path: wrist DINO patches plus robot/slow-planner context.
@@ -76,9 +76,9 @@ matched-chunk sweeps are now registry-backed under:
 - `fwr_generated_plan50_exec_10x10_spatial`
 - `fwr_generated_matched_chunk_10x10_spatial`
 
-Treat these rows as spatial diagnostics and dashboard evidence, not final
-manuscript claims, until the broader experiment set and target-alignment
-ablations are complete.
+The `fwr_*` prefixes are historical registry tags. Treat these rows as spatial
+diagnostics and dashboard evidence, not final manuscript claims, until the
+broader experiment set and target-alignment ablations are complete.
 
 ## Positioning vs. Closest Prior Work
 

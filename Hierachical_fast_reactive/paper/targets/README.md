@@ -1,16 +1,22 @@
 # Paper Targets
 
+Updated: 2026-06-15
+
 `paper/targets/` separates manuscript goals from shared source material. HFRVLA
 may produce a workshop paper, conference submission, thesis, defense slides, or
 internal proposal; each target needs a different narrative, evidence threshold,
 format, and appendix policy.
 
+For the current project, maintain the long paper and thesis separately at the
+target level, while sharing `paper/notes/`, the eval registry, verified
+bibliography entries, and core figures.
+
 ## Current Targets
 
 | Target | Folder | Output source | Purpose |
 |---|---|---|---|
+| Long paper | `long_paper/` | `paper/src/main.tex`, `paper/src/main_zh.tex` | Concise paper-style manuscript for workshop/arXiv/conference adaptation. |
 | NYCU master's thesis | `nycu_thesis/` | `paper/targets/nycu_thesis/latex/main.tex` | Detailed research-process record and degree-oriented thesis plan. |
-| Workshop/arXiv first draft | not yet targetized | `paper/src/main.tex`, `paper/src/main_zh.tex` | Shorter figure-first manuscript. |
 
 ## Standard Target Folder Contents
 

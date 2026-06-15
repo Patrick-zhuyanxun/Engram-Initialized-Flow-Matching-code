@@ -9,7 +9,7 @@
 ## 1. Research Question
 
 **Core question.**
-Can a small wrist-camera fast residual module improve the execution of frozen
+Can a small fast wrist correction module improve the execution of frozen
 SmolVLA action chunks without fine-tuning the slow VLA planner?
 
 **Current hypothesis.**
@@ -21,10 +21,10 @@ evidence plus slow-planner context to produce a bounded per-step residual:
 a_final = a_base + alpha * clip(delta_a)
 ```
 
-This is an A2C2-style residual-correction study, not the older gated HFRVLA
-proposal. The per-step visual correction signal is wrist-camera based, while
-`a_base`, `z_goal`, `z_phase`, state, and chunk index provide slow-planner and
-robot context.
+This is a fast wrist correction study under the HFRVLA name, not the older
+gated HFRVLA proposal. The per-step visual correction signal is wrist-camera
+based, while `a_base`, `z_goal`, `z_phase`, state, and chunk index provide
+slow-planner and robot context.
 
 **Out of current paper scope.**
 - Learned gate / confidence supervision.
@@ -41,8 +41,8 @@ The current system has two layers:
 
 1. **Frozen slow planner.** `HuggingFaceVLA/smolvla_libero` predicts action
    chunks and provides cached context tensors.
-2. **Trainable fast residual module.** A small wrist-centric module predicts
-   `delta_a` for the action that will be executed.
+2. **Trainable fast wrist correction module.** A small wrist-centric module
+   predicts `delta_a` for the action that will be executed.
 
 Runtime contract:
 
@@ -53,7 +53,7 @@ slow planner:
 fast control tick:
   obs_now = latest wrist/state
   a_base_i = next base action from the chunk
-  delta_i = FWR(obs_now, a_base_i, k_i, prev_delta, slow_context)
+  delta_i = HFRVLA_correction(obs_now, a_base_i, k_i, prev_delta, slow_context)
   send a_base_i + alpha * clip(delta_i)
 ```
 

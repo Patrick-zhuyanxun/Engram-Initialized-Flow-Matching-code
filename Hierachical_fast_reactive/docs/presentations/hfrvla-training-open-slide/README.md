@@ -10,6 +10,8 @@ npm run dev
 ```
 
 Then open the dev server and edit `slides/getting-started/index.tsx`, or create a new slide at `slides/<your-slide>/index.tsx`.
+For this project, edit `slides/hfrvla-training/index.tsx`; it builds the generated briefing at
+`../../hfrvla_experiment_briefing.html`.
 
 ## Scripts
 
@@ -35,7 +37,7 @@ export default [Cover] satisfies Page[];
 
 Every page renders into a fixed **1920 × 1080** canvas — design with absolute pixel values. Put images, videos, and fonts under `slides/<id>/assets/` and import them directly.
 
-See [`CLAUDE.md`](./CLAUDE.md) for the full authoring guide.
+See [`AGENTS.md`](./AGENTS.md) for project-local authoring notes.
 
 ## Navigation
 

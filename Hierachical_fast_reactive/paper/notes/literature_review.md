@@ -1,8 +1,9 @@
 # Literature Review — HFRVLA
 
 > Last updated: 2026-06-05
-> Scope: paper-facing related-work notes for the current Fast Wrist Residual
-> mainline. Use `paper/src/references.bib` as the citation source of truth.
+> Scope: paper-facing related-work notes for the current HFRVLA fast wrist
+> correction mainline. Use `paper/src/references.bib` as the citation source
+> of truth.
 
 ---
 
@@ -29,7 +30,7 @@ older HFRVLA notes and are out of the current mainline.
 | SmolVLA | Efficient open VLA backbone with action chunking and LeRobot integration. | Frozen slow planner used by HFRVLA. |
 | LeRobot | Dataset/training/evaluation infrastructure for robot learning. | HFRVLA is implemented as a LeRobot policy plugin with recorder, fast-cache builder, packaging, and eval registry. |
 | LIBERO | Benchmark suite for long-horizon robot manipulation tasks. | Current simulation benchmark. |
-| DINOv3 | Frozen dense visual representation. | Provides the wrist patch features used by the fast residual module. |
+| DINOv3 | Frozen dense visual representation. | Provides the wrist patch features used by the fast correction module. |
 
 ---
 

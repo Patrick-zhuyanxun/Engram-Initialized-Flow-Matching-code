@@ -29,7 +29,7 @@
 \end{equation*}
 進行有界合併。此設計刻意保留 slow planner 的全域任務理解，同時讓高頻新視覺證據來自腕部相機。
 
-實驗以 LIBERO-Spatial 為主要分析對象，並以 eval registry 追蹤所有 sweep。同步 plan=50 execution/replan sweep 顯示，\method{} 在 $K=2,4,8,16,32,50$ 的成功率分別為 $79\%,80\%,71\%,75\%,59\%,53\%$，對應 \smolvla{} 為 $72\%,65\%,60\%,57\%,50\%,40\%$；但在 $K=1$ 下 \method{} 為 $75\%$，低於 baseline 的 $79\%$。同步 matched chunk sweep 顯示，當 $K\geq4$ 時 \method{} 多數設定優於 baseline，但長 chunk 仍明顯困難。Residual calibration 顯示殘差權限必須限制；plan=50、exec=8 設定下 $\alpha=0.75,\delta_{\max}=0.2$ 達到 $41/50=82\%$。唯一 async-timestep planner-delay stress test 顯示，在 delay $d=1..4$ 時 fast residual 相對 disable-fast wrapper 呈現較高成功率。
+實驗以 LIBERO-Spatial 為主要分析對象，並以 eval registry 追蹤所有 sweep。同步 plan=50 execution/replan sweep 顯示，\method{} 在 $K=2,4,8,16,32,50$ 的成功率分別為 $79\%,80\%,71\%,75\%,59\%,53\%$，對應 \smolvla{} 為 $72\%,65\%,60\%,57\%,50\%,40\%$；但在 $K=1$ 下 \method{} 為 $75\%$，低於 baseline 的 $79\%$。同步 matched chunk sweep 顯示，當 $K\geq4$ 時 \method{} 多數設定優於 baseline，但長 chunk 仍明顯困難。Residual calibration 顯示修正權限必須限制；plan=50、exec=8 設定下 $\alpha=0.75,\delta_{\max}=0.2$ 達到 $41/50=82\%$。唯一 async-timestep planner-delay stress test 顯示，在 delay $d=1..4$ 時 fast correction path 相對 disable-fast wrapper 呈現較高成功率。
 
 本論文主張 \method{} 應被理解為凍結 VLA action chunk 的有界局部修正層，而非頻繁重規劃、完整非同步排程或真實機器人驗證的替代品。未來仍需 multi-seed、causal visual ablations、same-backbone A2C2 comparison 與 real-robot validation 才能形成更強結論。
 

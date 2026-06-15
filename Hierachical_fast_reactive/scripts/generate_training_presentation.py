@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Build the HFRVLA training presentation through open-slide.
+"""Build the HFRVLA experiment briefing through open-slide.
 
 The editable deck lives in:
   docs/presentations/hfrvla-training-open-slide/slides/hfrvla-training/index.tsx
 
 This script first checks that the open-slide workspace builds, then bundles a
 small standalone viewer for the same open-slide deck source into
-docs/training_presentation.html. The standalone viewer avoids open-slide's
-BrowserRouter so the final HTML also works from file://.
+docs/hfrvla_experiment_briefing.html. The standalone viewer avoids open-slide's
+BrowserRouter so the final HTML also works from file://. The old
+docs/training_presentation.html path is retained as a compatibility redirect.
 """
 
 from __future__ import annotations
@@ -25,26 +26,13 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TRAINING_MD = REPO_ROOT / "docs/training.md"
-OUTPUT_HTML = REPO_ROOT / "docs/training_presentation.html"
+OUTPUT_HTML = REPO_ROOT / "docs/hfrvla_experiment_briefing.html"
+LEGACY_OUTPUT_HTML = REPO_ROOT / "docs/training_presentation.html"
 OPEN_SLIDE_ROOT = REPO_ROOT / "docs/presentations/hfrvla-training-open-slide"
+SLIDE_SOURCE = OPEN_SLIDE_ROOT / "slides/hfrvla-training/index.tsx"
+EVAL_MASTER = REPO_ROOT / "experiments/eval_registry/eval_results_master.csv"
 OPEN_SLIDE_CHECK_BUILD_DIR = OPEN_SLIDE_ROOT / "dist-open-slide-check"
-STANDALONE_BUILD_DIR = OPEN_SLIDE_ROOT / "dist-training-presentation"
-
-
-REQUIRED_PHRASES = {
-    "fast-cache builder": "scripts/build_hfrvla_fastcache.py",
-    "fast-cache backend": "HFRVLA_DATASET_BACKEND=fastcache",
-    "float16 cache": "float16",
-    "plugin reinstall": "uv pip install -e",
-    "batch guidance": "samples/sec ~= BATCH_SIZE / (data_s + updt_s)",
-    "verified dataset": "checkpoints/HFRVLA_libero_v1_merged_reindexed",
-    "open-slide source": "docs/presentations/hfrvla-training-open-slide",
-}
-
-
-def _validate_training_doc(markdown: str) -> list[str]:
-    return [label for label, phrase in REQUIRED_PHRASES.items() if phrase not in markdown]
+STANDALONE_BUILD_DIR = OPEN_SLIDE_ROOT / "dist-experiment-briefing"
 
 
 def _ensure_open_slide_dependencies() -> None:
@@ -154,10 +142,11 @@ def _find_single(pattern: str, text: str, label: str) -> str:
     return matches[0]
 
 
-def _bundle_html(markdown: str) -> str:
-    source_sha = hashlib.sha256(markdown.encode("utf-8")).hexdigest()[:12]
+def _bundle_html(slide_source: str) -> str:
+    source_sha = hashlib.sha256(slide_source.encode("utf-8")).hexdigest()[:12]
+    newest_source_mtime = max(SLIDE_SOURCE.stat().st_mtime, EVAL_MASTER.stat().st_mtime)
     source_updated_at = datetime.fromtimestamp(
-        TRAINING_MD.stat().st_mtime, timezone.utc
+        newest_source_mtime, timezone.utc
     ).astimezone().isoformat(timespec="seconds")
 
     index_path = STANDALONE_BUILD_DIR / "standalone/index.html"
@@ -193,9 +182,10 @@ def _bundle_html(markdown: str) -> str:
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="generator" content="open-slide @open-slide/core" />
-  <meta name="hfrvla-source" content="docs/training.md" />
+  <meta name="hfrvla-source" content="docs/presentations/hfrvla-training-open-slide/slides/hfrvla-training/index.tsx" />
+  <meta name="hfrvla-eval-registry" content="experiments/eval_registry/eval_results_master.csv" />
   <meta name="hfrvla-source-updated-at" content="{html.escape(source_updated_at)}" />
-{favicon}  <title>HFRVLA Training Flow</title>
+{favicon}  <title>HFRVLA Experiment Briefing</title>
   <style>{css}</style>
 </head>
 <body>
@@ -206,24 +196,58 @@ def _bundle_html(markdown: str) -> str:
 """
 
 
+def _legacy_redirect_html() -> str:
+    target = OUTPUT_HTML.name
+    return f"""<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="refresh" content="0; url={html.escape(target)}" />
+  <title>HFRVLA Experiment Briefing</title>
+  <style>
+    body {{
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #f7f3ea;
+      color: #17211f;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }}
+    a {{ color: #0f9f7a; font-weight: 700; }}
+  </style>
+</head>
+<body>
+  <main>
+    <p>HFRVLA briefing moved to <a href="{html.escape(target)}">{html.escape(target)}</a>.</p>
+  </main>
+</body>
+</html>
+"""
+
+
 def generate(*, check: bool = False) -> None:
-    markdown = TRAINING_MD.read_text(encoding="utf-8")
-    missing = _validate_training_doc(markdown)
-    if missing:
-        missing_text = ", ".join(missing)
-        raise RuntimeError(f"docs/training.md is missing required current training notes: {missing_text}")
+    slide_source = SLIDE_SOURCE.read_text(encoding="utf-8")
 
     _run_open_slide_build_check()
     _run_standalone_build()
-    output = _bundle_html(markdown)
+    output = _bundle_html(slide_source)
+    legacy_output = _legacy_redirect_html()
     if check:
         if not OUTPUT_HTML.exists() or OUTPUT_HTML.read_text(encoding="utf-8") != output:
             raise SystemExit(f"{OUTPUT_HTML} is out of date; run scripts/generate_training_presentation.py")
-        print(f"[training-presentation] up to date via open-slide: {OUTPUT_HTML}")
+        if not LEGACY_OUTPUT_HTML.exists() or LEGACY_OUTPUT_HTML.read_text(encoding="utf-8") != legacy_output:
+            raise SystemExit(
+                f"{LEGACY_OUTPUT_HTML} is out of date; run scripts/generate_training_presentation.py"
+            )
+        print(f"[experiment-briefing] up to date via open-slide: {OUTPUT_HTML}")
         return
 
     OUTPUT_HTML.write_text(output, encoding="utf-8")
-    print(f"[training-presentation] wrote open-slide bundle {OUTPUT_HTML}")
+    LEGACY_OUTPUT_HTML.write_text(legacy_output, encoding="utf-8")
+    print(f"[experiment-briefing] wrote open-slide bundle {OUTPUT_HTML}")
+    print(f"[experiment-briefing] wrote compatibility redirect {LEGACY_OUTPUT_HTML}")
 
 
 def main() -> None:

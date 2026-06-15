@@ -26,12 +26,12 @@
 本 thesis 的長期維護順序如下：
 
 \begin{enumerate}
-  \item 研究想法：bounded wrist residual correction for frozen VLA chunks。
+  \item 研究想法：bounded fast wrist correction for frozen VLA chunks。
   \item 研究背景與依據：VLA inference cost、action chunking、stale execution。
   \item 文獻蒐集：VLA、chunking、real-time VLA、fast-slow correction、wrist/DINO。
   \item 文獻比較與研究缺口：frozen SmolVLA chunk execution correction。
   \item 研究問題：success-rate improvement under controlled chunk protocols。
-  \item 研究架構：slow planner + fast wrist residual。
+  \item 研究架構：slow planner + fast wrist correction。
   \item 研究方法：dataset/cache、DINO patches、residual target、clipped merge。
   \item 資料分析：registry-backed success rate。
   \item 研究結果：synchronous sweeps、calibration、async delay。
@@ -79,7 +79,7 @@
 以下項目以紅字保留，表示尚不足以支撐 main-text claim：
 
 \begin{itemize}
-  \item \textcolor{red}{Dual-view DINO fast residual ablation}：wrist + third-person image fast model。
+  \item \textcolor{red}{Dual-view DINO fast correction ablation}：wrist + third-person image fast model。
   \item \textcolor{red}{Latent-context ablation}：移除 residual head 中的 cached slow-planner context。
   \item \textcolor{red}{Chunk-age/stale-target training}：用 delayed base chunks 訓練 residual targets。
   \item \textcolor{red}{No-residual-clip control sweeps}：完整擴展 no-clip controls。

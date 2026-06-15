@@ -13,7 +13,7 @@ chunk `A_t`. The chunk becomes available after `planner_delay_steps = d` control
 steps. At `t+d`, the executor immediately replaces the active base-action queue
 and starts from `A_t[d]`, not `A_t[0]`.
 
-The fast wrist residual remains local to the executor and runs every control
+The fast wrist correction remains local to the executor and runs every control
 step with current wrist feedback:
 
 ```text
@@ -41,7 +41,7 @@ Main arms:
 `hfrvla_disable_fast` uses the same wrapper, queueing, delay, fallback, and
 post-processing, but sets `--policy.inference_disable_fast=true` so
 `select_action()` returns the selected `a_base` directly. This isolates whether
-the wrist residual is the source of the robustness.
+the fast wrist correction path is the source of the robustness.
 
 ## Commands
 

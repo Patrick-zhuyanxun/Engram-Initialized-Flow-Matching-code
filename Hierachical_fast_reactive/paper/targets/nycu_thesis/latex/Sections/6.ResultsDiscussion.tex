@@ -31,7 +31,7 @@
   \end{tabular}
 \end{table}
 
-結果顯示 \method{} 並非在所有 setting 都優於 baseline。當 $K=1$ 時，\smolvla{} 每一步都更新，fast residual 反而使成功率從 79\% 降到 75\%。這符合本文假設：當 slow planner 已經高頻 closed-loop，額外 residual 可能不是必要的。當 $K=2$ 到 $K=50$ 時，\method{} 均高於 \smolvla{}，其中 $K=4$ 與 $K=16$ 的差距分別為 +15 與 +18 points。這支持本文主張：fast wrist residual 對 stale action execution regime 較有價值。
+結果顯示 \method{} 並非在所有 setting 都優於 baseline。當 $K=1$ 時，\smolvla{} 每一步都更新，fast wrist correction 反而使成功率從 79\% 降到 75\%。這符合本文假設：當 slow planner 已經高頻 closed-loop，額外 correction 可能不是必要的。當 $K=2$ 到 $K=50$ 時，\method{} 均高於 \smolvla{}，其中 $K=4$ 與 $K=16$ 的差距分別為 +15 與 +18 points。這支持本文主張：fast wrist correction 對 stale action execution regime 較有價值。
 
 \section{Synchronous matched chunk sweep}
 
@@ -63,7 +63,7 @@
   \end{tabular}
 \end{table}
 
-Matched sweep 的解讀比 plan=50 sweep 更保守。當 $K=1,2$ 時，\method{} 低於 \smolvla{}，表示 fast residual 在 high-frequency replanning 下可能 over-correct。當 $K\geq4$ 時，\method{} 開始高於 baseline，但長 chunk 的 absolute success rate 仍下降。這說明 residual correction 可以減緩 stale execution degradation，但尚未解決 long-horizon chunk execution。
+Matched sweep 的解讀比 plan=50 sweep 更保守。當 $K=1,2$ 時，\method{} 低於 \smolvla{}，表示 fast wrist correction 在 high-frequency replanning 下可能 over-correct。當 $K\geq4$ 時，\method{} 開始高於 baseline，但長 chunk 的 absolute success rate 仍下降。這說明 bounded correction 可以減緩 stale execution degradation，但尚未解決 long-horizon chunk execution。
 
 \section{Residual alpha/clip calibration}
 
@@ -122,14 +122,14 @@ Matched sweep 的解讀比 plan=50 sweep 更保守。當 $K=1,2$ 時，\method{}
   \end{tabular}
 \end{table}
 
-Delay $d=0$ 時 disable-fast 較高，表示 fast residual 不是所有情況都應介入。但在 $d=1..4$ 時，\method{} 均高於 disable-fast，尤其 $d=2,4$ 皆為 +10 points。這支持本文對 fast residual 的定位：當 slow chunk arrival 與 current timestep 之間存在 mismatch 時，current wrist evidence 可提供局部修正訊號。
+Delay $d=0$ 時 disable-fast 較高，表示 fast wrist correction 不是所有情況都應介入。但在 $d=1..4$ 時，\method{} 均高於 disable-fast，尤其 $d=2,4$ 皆為 +10 points。這支持本文對 fast wrist correction 的定位：當 slow chunk arrival 與 current timestep 之間存在 mismatch 時，current wrist evidence 可提供局部修正訊號。
 
 \section{DINO visualization discussion}
 
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=0.72\textwidth]{fig_dino_cross_attention_example.png}
-  \caption{DINO wrist patch attention visualization example。此圖用於說明 fast residual module 確實讀取 patch-level wrist features；它不是 causal attribution proof。}
+  \caption{DINO wrist patch attention visualization example。此圖用於說明 fast correction module 確實讀取 patch-level wrist features；它不是 causal attribution proof。}
   \label{fig:dino_attention}
 \end{figure}
 
@@ -137,6 +137,6 @@ DINO visualization 的主要用途是檢查資料流與局部 patch behavior。�
 
 \section{整體討論}
 
-綜合上述結果，\method{} 的成功模式與失敗模式都很清楚。成功模式出現在 stale-action risk 較高的設定，例如 plan=50 中等到長 execution interval、matched $K\geq4$、以及 planner delay $d>0$。失敗模式出現在 high-frequency replanning，例如 $K=1$ 或 matched $K=2$，fast residual 可能 over-correct baseline 已經合理的 action。
+綜合上述結果，\method{} 的成功模式與失敗模式都很清楚。成功模式出現在 stale-action risk 較高的設定，例如 plan=50 中等到長 execution interval、matched $K\geq4$、以及 planner delay $d>0$。失敗模式出現在 high-frequency replanning，例如 $K=1$ 或 matched $K=2$，fast wrist correction 可能 over-correct baseline 已經合理的 action。
 
-因此，本文結論不是「fast residual 永遠改善 VLA」，而是「有界 wrist residual 對 frozen VLA action chunks 的 stale execution regime 有幫助」。這個結論較窄，但較符合目前 evidence。
+因此，本文結論不是「fast wrist correction 永遠改善 VLA」，而是「有界 fast wrist correction 對 frozen VLA action chunks 的 stale execution regime 有幫助」。這個結論較窄，但較符合目前 evidence。

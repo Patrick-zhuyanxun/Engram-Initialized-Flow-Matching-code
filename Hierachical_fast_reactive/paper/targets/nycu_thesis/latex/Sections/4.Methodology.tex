@@ -3,17 +3,17 @@
 
 \section{系統總覽}
 
-\method{} 的核心問題是：當凍結的 VLA planner 一次輸出多步 action chunk 時，chunk 後段 action 可能已經和目前 wrist observation 不一致；此時能否用一個小型、快速、只針對當前 action 的 residual module 做局部修正。整個系統因此被分成兩條路徑。第一條是 frozen slow planner，負責根據語言、影像與 robot state 產生低頻 action chunk 與 task context。第二條是 trainable fast path，使用目前 wrist camera 的局部視覺證據、robot state、chunk position 與 selected base action，預測一個 bounded 7D residual。
+\method{} 的核心問題是：當凍結的 VLA planner 一次輸出多步 action chunk 時，chunk 後段 action 可能已經和目前 wrist observation 不一致；此時能否用一個小型、快速、只針對當前 action 的 fast wrist correction module 做局部修正。整個系統因此被分成兩條路徑。第一條是 frozen slow planner，負責根據語言、影像與 robot state 產生低頻 action chunk 與 task context。第二條是 trainable fast path，使用目前 wrist camera 的局部視覺證據、robot state、chunk position 與 selected base action，預測一個 bounded 7D residual。
 
 此設計刻意不 fine-tune slow planner。Slow planner 的角色是提供 global task intent、action chunk 與可快取的慢速脈絡；fast module 的角色則是根據當下 wrist evidence 修正即將執行的 action。也就是說，\method{} 不是重新訓練一個完整 VLA，也不是把 wrist camera 變成獨立 policy，而是在 frozen chunking controller 外加上一個局部反應層。
 
 \section{Cached training data and slow-planner context}
 
-訓練 fast residual module 時，本研究不直接把 raw LIBERO observation 丟進 train loop 重新執行 slow planner。相反地，我們先建立一個 cached training dataset：在資料記錄階段執行 frozen planner 與 frozen DINOv3 wrist encoder，並把 fast module 需要的 slow-planner outputs、wrist patch features 與 expert action 一起存下來。這讓後續 training 成為一個乾淨的 supervised residual-learning problem，也避免在每個 training step 重複執行昂貴的 VLA forward。
+訓練 fast wrist correction module 時，本研究不直接把 raw LIBERO observation 丟進 train loop 重新執行 slow planner。相反地，我們先建立一個 cached training dataset：在資料記錄階段執行 frozen planner 與 frozen DINOv3 wrist encoder，並把 fast module 需要的 slow-planner outputs、wrist patch features 與 expert action 一起存下來。這讓後續 training 成為一個乾淨的 supervised residual-learning problem，也避免在每個 training step 重複執行昂貴的 VLA forward。
 
 \begin{table}[htbp]
   \centering
-  \caption{Fast residual module 使用的 conceptual signals。Exact dataset keys 與 local paths 列於 Appendix~\ref{app:thesis-implementation-reproducibility}。}
+  \caption{Fast wrist correction module 使用的 conceptual signals。Exact dataset keys 與 local paths 列於 Appendix~\ref{app:thesis-implementation-reproducibility}。}
   \label{tab:conceptual_signals}
   \begin{tabular}{p{0.24\textwidth}p{0.30\textwidth}p{0.34\textwidth}}
     \toprule
@@ -40,15 +40,15 @@ Fast visual path 的主要新訊號來自 wrist camera。Wrist view 通常比 th
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=0.72\textwidth]{fig_dino_patch_grid_preview.png}
-  \caption{Wrist image 的 DINO patch grid preview。Patch tokens 保留局部空間結構，使 fast residual module 能讀取 gripper-relative visual evidence。}
+  \caption{Wrist image 的 DINO patch grid preview。Patch tokens 保留局部空間結構，使 fast correction module 能讀取 gripper-relative visual evidence。}
   \label{fig:dino_patch_grid}
 \end{figure}
 
 DINO features 在本文中的角色有三點。第一，它們提供 frozen dense visual representation，降低 fast module 訓練成本。第二，patch tokens 保留 wrist image lattice，適合表示 gripper tip、object edge 與 contact neighborhood。第三，DINO visualization 只用於 pipeline inspection；它不能單獨證明模型決策的因果來源。若要支持 causal claim，仍需要 masking 或 ablation experiments。
 
-\section{Fast residual module}
+\section{Fast wrist correction module}
 
-Fast residual module 的輸入包含 wrist patch features、robot state、selected base action、chunk position、cached slow-planner context，以及 previous/current training window。輸出為 7 維 residual $\deltah$，對應 LIBERO action space 的各自由度。直覺上，selected base action 提供 slow planner 原本想做的動作，wrist features 提供目前 gripper-relative evidence，而 chunk position 告訴 fast module 此 action 在 chunk 中的時間位置。
+Fast wrist correction module 的輸入包含 wrist patch features、robot state、selected base action、chunk position、cached slow-planner context，以及 previous/current training window。輸出為 7 維 residual $\deltah$，對應 LIBERO action space 的各自由度。直覺上，selected base action 提供 slow planner 原本想做的動作，wrist features 提供目前 gripper-relative evidence，而 chunk position 告訴 fast module 此 action 在 chunk 中的時間位置。
 
 部署時，模型不直接把 residual 當成完整 replacement action。相反地，\method{} 使用 clipped and scaled merge：
 

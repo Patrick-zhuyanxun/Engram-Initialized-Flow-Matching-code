@@ -36,7 +36,7 @@
 \newcommand{\deltah}{\hat{\Delta a}}
 \newcommand{\dmax}{\delta_{\max}}
 
-\title{\method{}：凍結 VLA Action Chunk 的快速腕部殘差修正}
+\title{\method{}：凍結 VLA Action Chunk 的快速腕部修正}
 \author{Anonymous}
 \date{}
 
@@ -44,7 +44,7 @@
 \maketitle
 
 \begin{abstract}
-Vision-language-action (VLA) policy 常以 action chunking 分攤昂貴推論成本，但 chunk 後段 action 會在較新的 robot state 下被執行，卻仍然來自較早 observation。本文提出 \method{}，一個窄而可檢驗的介入：凍結針對 LIBERO 適配的 \smolvla{} planner，只訓練小型 wrist-camera residual module 修正當前要執行的 base action。Fast module 使用當前 wrist patch features、proprioceptive state、selected base action、chunk position 與 cached slow-planner context，並透過 $\afinal=\abase+\alpha\,\mathrm{clip}(\deltah)$ 產生 bounded correction。所有 main quantitative claims 只報告 LIBERO-Spatial。在 synchronous plan-50 execution sweeps 中，\method{} 於 $K=2,4,8,16,32,50$ 的成功率為 $79,80,71,75,59,53\%$，\smolvla{} 為 $72,65,60,57,50,40\%$；但 $K=1$ 時 \method{} 為 $75\%$，低於 \smolvla{} 的 $79\%$。在 synchronous matched-chunk sweeps 中，\method{} 自 $K=4$ 起改善 baseline，$K=50$ 為 $53\%$ 對 $40\%$。Residual calibration 顯示 residual authority 必須受限，在 plan-50、exec-8 calibration 中 $\alpha=0.75,\dmax=0.2$ 達到 $41/50$ Spatial successes。最後，planner-delay stress test 顯示 delay $d=1..4$ 時，\method{} 維持 $68,72,68,66\%$ success，而 disable-fast ablation 降到 $64,62,61,56\%$。這些結果支持 \method{} 作為 stale VLA chunks 的 clipped local correction layer，而不是 frequent replanning 或完整 async VLA scheduling 的替代品。
+Vision-language-action (VLA) policy 常以 action chunking 分攤昂貴推論成本，但 chunk 後段 action 會在較新的 robot state 下被執行，卻仍然來自較早 observation。本文提出 \method{}，一個窄而可檢驗的介入：凍結針對 LIBERO 適配的 \smolvla{} planner，只訓練小型 fast wrist correction module 修正當前要執行的 base action。Fast module 使用當前 wrist patch features、proprioceptive state、selected base action、chunk position 與 cached slow-planner context，並透過 $\afinal=\abase+\alpha\,\mathrm{clip}(\deltah)$ 產生 bounded correction。所有 main quantitative claims 只報告 LIBERO-Spatial。在 synchronous plan-50 execution sweeps 中，\method{} 於 $K=2,4,8,16,32,50$ 的成功率為 $79,80,71,75,59,53\%$，\smolvla{} 為 $72,65,60,57,50,40\%$；但 $K=1$ 時 \method{} 為 $75\%$，低於 \smolvla{} 的 $79\%$。在 synchronous matched-chunk sweeps 中，\method{} 自 $K=4$ 起改善 baseline，$K=50$ 為 $53\%$ 對 $40\%$。Residual calibration 顯示 correction authority 必須受限，在 plan-50、exec-8 calibration 中 $\alpha=0.75,\dmax=0.2$ 達到 $41/50$ Spatial successes。最後，planner-delay stress test 顯示 delay $d=1..4$ 時，\method{} 維持 $68,72,68,66\%$ success，而 disable-fast ablation 降到 $64,62,61,56\%$。這些結果支持 \method{} 作為 stale VLA chunks 的 clipped local correction layer，而不是 frequent replanning 或完整 async VLA scheduling 的替代品。
 \end{abstract}
 
 \section{Introduction}
@@ -60,16 +60,16 @@ Chunking 會產生 stale-action failure mode。Chunk 的第一個 action 和生�
   \label{fig:problem-zh}
 \end{figure}
 
-\method{} 在受限 contract 下測試這個想法。我們使用針對 LIBERO 適配的 \smolvla{} 作為 frozen planner，cache 其 base actions 與 slow context，並只訓練 wrist residual head。Per-step visual correction signal 來自 wrist camera；但 residual 不是 wrist-only controller，因為它也 condition on $\abase$、chunk position、robot state 與 slow-planner context。它也不是完整 real-time VLA scheduler，而是包在 frozen chunking controller 外的一個 fast local correction module。
+\method{} 在受限 contract 下測試這個想法。我們使用針對 LIBERO 適配的 \smolvla{} 作為 frozen planner，cache 其 base actions 與 slow context，並只訓練 fast wrist correction head。Per-step visual correction signal 來自 wrist camera；但 correction head 不是 wrist-only controller，因為它也 condition on $\abase$、chunk position、robot state 與 slow-planner context。它也不是完整 real-time VLA scheduler，而是包在 frozen chunking controller 外的一個 fast local correction module。
 
 目前 first-draft evidence 的範圍刻意保守。Main quantitative claims 只使用 LIBERO-Spatial；Object results 不與 Spatial 合併進 main text。除了 planner-delay experiment 以外，所有 sweeps 都是 synchronous inference；只有 planner-delay sweep 使用 async-timestep inference。Figures 是主要 evidence，compact tables 只提供 exact values。
 
 本文貢獻如下：
 \begin{itemize}
-  \item 一個基於 LeRobot 的 frozen-\smolvla{} system，包含 trainable wrist-camera residual correction path。
+  \item 一個基於 LeRobot 的 frozen-\smolvla{} system，包含 trainable fast wrist correction path。
   \item 一個 clipped residual merge：$\afinal=\abase+\alpha\,\mathrm{clip}(\deltah)$，不 fine-tune slow planner、不使用 learned deployment gate，也不加入 contact auxiliary head。
   \item Spatial-only planning/execution sweeps，分開 fixed plan-50 execution 與 matched planning/execution chunks。
-  \item Async-timestep planner-delay stress test，顯示 slow chunks late arrival 時 fast residual 可降低 degradation。
+  \item Async-timestep planner-delay stress test，顯示 slow chunks late arrival 時 fast correction path 可降低 degradation。
 \end{itemize}
 
 \section{Related Work}
@@ -81,10 +81,10 @@ Chunking 會產生 stale-action failure mode。Chunk 的第一個 action 和生�
 Action Chunking Transformers 與 Diffusion Policy 推動了 chunked action generation 與 receding-horizon execution 在 manipulation 中的使用~\citep{zhao2023aloha,chi2023diffusionpolicy}。FAST 研究 high-frequency VLA action sequences 的 action tokenization~\citep{pertsch2025fast}。近期 real-time VLA work 則處理 latency 與 chunk continuity：RTC 在執行當前 chunk 時生成下一個 chunk~\citep{black2025rtc}，VLASH 預測 future execution-time state~\citep{tang2025vlash}，VLA-RAIL 把 asynchronous VLA chunks 連成更平滑的 robot trajectory~\citep{zhao2025vlarail}。\method{} 是 complementary approach：大致保留 scheduling，改為修正當下要執行的 action。
 
 \paragraph{Correction heads and fast-slow policies.}
-A2C2 是最接近的 conceptual reference：它使用 latest observation、base action、chunk index 與 base-policy features，對 off-the-shelf VLA chunks 加上 lightweight correction head~\citep{sendai2025a2c2}。其他 fast-slow systems 則把 fast manipulation pathway 整合進較慢的 reasoning 或 foundation-model controllers~\citep{chen2025fastinslow,zou2025duocorefs,xue2025rdp,xie2026dynamicvla}。\method{} 延續 frozen-chunk correction 的精神，但在 \smolvla{}/LeRobot implementation 中隔離出 wrist-centric residual path~\citep{cadene2026lerobot}。在沒有相同 backbone、observation stack、data 與 evaluation scripts 前，本文不宣稱直接優於 A2C2。
+A2C2 是最接近的 conceptual reference：它使用 latest observation、base action、chunk index 與 base-policy features，對 off-the-shelf VLA chunks 加上 lightweight correction head~\citep{sendai2025a2c2}。其他 fast-slow systems 則把 fast manipulation pathway 整合進較慢的 reasoning 或 foundation-model controllers~\citep{chen2025fastinslow,zou2025duocorefs,xue2025rdp,xie2026dynamicvla}。\method{} 延續 frozen-chunk correction 的精神，但在 \smolvla{}/LeRobot implementation 中隔離出 wrist-centric correction path~\citep{cadene2026lerobot}。在沒有相同 backbone、observation stack、data 與 evaluation scripts 前，本文不宣稱直接優於 A2C2。
 
 \paragraph{Wrist views and dense visual features.}
-Wrist 與 egocentric views 對 precision manipulation 提供 local evidence~\citep{jangir2022lookcloser,chuang2024activevision}。DINO、DINOv2、DINOv3 與 dense descriptor analyses 顯示 self-supervised ViT features 可提供 localized visual structure~\citep{caron2021dino,oquab2023dinov2,simeoni2025dinov3,amir2021densevit}。R3M、DINOBot 與 CAGE 等 robot systems 也支持用 pretrained visual features 做 data-efficient manipulation~\citep{nair2023r3m,dipalo2024dinobot,xia2024cage}。\method{} 使用 frozen DINOv3 wrist patches 作為 residual head input：每張 wrist image resize/crop 成 $224\times224$，ViT-S/16 產生 $14\times14=196$ 個 patch tokens，每個 token 為 384 維。這讓 fast head 能以 patch-level wrist evidence 做 correction，而不是只依賴 pooled image embedding；heatmap visualizations 若未搭配 causal ablations，只視為 diagnostics。
+Wrist 與 egocentric views 對 precision manipulation 提供 local evidence~\citep{jangir2022lookcloser,chuang2024activevision}。DINO、DINOv2、DINOv3 與 dense descriptor analyses 顯示 self-supervised ViT features 可提供 localized visual structure~\citep{caron2021dino,oquab2023dinov2,simeoni2025dinov3,amir2021densevit}。R3M、DINOBot 與 CAGE 等 robot systems 也支持用 pretrained visual features 做 data-efficient manipulation~\citep{nair2023r3m,dipalo2024dinobot,xia2024cage}。\method{} 使用 frozen DINOv3 wrist patches 作為 correction head input：每張 wrist image resize/crop 成 $224\times224$，ViT-S/16 產生 $14\times14=196$ 個 patch tokens，每個 token 為 384 維。這讓 fast head 能以 patch-level wrist evidence 做 correction，而不是只依賴 pooled image embedding；heatmap visualizations 若未搭配 causal ablations，只視為 diagnostics。
 
 \section{Method}
 
@@ -102,17 +102,17 @@ Slow planner 是針對 LIBERO 適配的 \smolvla{} model，並且在 training �
 
 \subsection{Wrist Patch Features}
 
-HFRVLA 的 fast visual path 使用 wrist camera 作為高頻視覺證據來源，而不是依賴第三人稱影像。Recording/cache 階段會把每張 wrist frame 送入 frozen DINOv3 ViT-S/16 feature extractor，產生 $14\times14=196$ 個 patch tokens，每個 token 維度為 384。DINOv3 在 fast-module training loop 中不更新，也不重跑；訓練讀取的是預先 cache 好的 dense wrist patch descriptors。這讓 trainable parameter budget 集中在 residual head，也固定了 visual features 的來源。
+HFRVLA 的 fast visual path 使用 wrist camera 作為高頻視覺證據來源，而不是依賴第三人稱影像。Recording/cache 階段會把每張 wrist frame 送入 frozen DINOv3 ViT-S/16 feature extractor，產生 $14\times14=196$ 個 patch tokens，每個 token 維度為 384。DINOv3 在 fast-module training loop 中不更新，也不重跑；訓練讀取的是預先 cache 好的 dense wrist patch descriptors。這讓 trainable parameter budget 集中在 correction head，也固定了 visual features 的來源。
 
-雖然 cached descriptor 在資料中是 token sequence，它仍對應 wrist image 的 spatial grid。Residual head 會把 patch tokens 投影到 hidden width，並用 selected base action、chunk position、robot state 與 slow-planner context 形成的 query 進行 pooling。這個設計讓 wrist branch 保留局部視覺解析度，同時不把它變成完全脫離 slow planner 的 independent controller。下方診斷面板顯示一個例子：第三人稱 RGB、wrist RGB、DINO patch-norm heatmap 與 fast wrist residual cross-attention map。這張面板只用來呈現訊號來源與 spatial correspondence；是否具有 causal necessity 需要 appendix 中列出的 DINO masking / wrist masking ablations 才能判定。
+雖然 cached descriptor 在資料中是 token sequence，它仍對應 wrist image 的 spatial grid。Correction head 會把 patch tokens 投影到 hidden width，並用 selected base action、chunk position、robot state 與 slow-planner context 形成的 query 進行 pooling。這個設計讓 wrist branch 保留局部視覺解析度，同時不把它變成完全脫離 slow planner 的 independent controller。下方診斷面板顯示一個例子：第三人稱 RGB、wrist RGB、DINO patch-norm heatmap 與 HFRVLA correction cross-attention map。這張面板只用來呈現訊號來源與 spatial correspondence；是否具有 causal necessity 需要 appendix 中列出的 DINO masking / wrist masking ablations 才能判定。
 
 \begin{center}
   \includegraphics[width=0.98\linewidth]{figures/fig_dino_cross_attention_example.png}
   \parbox{0.94\linewidth}{\footnotesize\textbf{DINOv3 wrist patch diagnostic panel。}
-  Frozen DINOv3 以 $224\times224$ wrist crop 產生 $14\times14$ patch grid，fast residual head 再用 slow-planner context 對 patch tokens 做 cross-attention pooling。Heatmaps 是 qualitative diagnostics，不單獨作為 causal evidence。}
+  Frozen DINOv3 以 $224\times224$ wrist crop 產生 $14\times14$ patch grid，fast correction head 再用 slow-planner context 對 patch tokens 做 cross-attention pooling。Heatmaps 是 qualitative diagnostics，不單獨作為 causal evidence。}
 \end{center}
 
-\subsection{Fast Wrist Residual}
+\subsection{Fast Wrist Correction}
 
 Trainable module 接收 current wrist patch features、robot state、$\abase$、chunk position、cached slow-planner context，以及 previous/current training window，並預測當前要執行 action 的 full 7D residual $\deltah$。Deployment 使用：
 \begin{equation}
@@ -125,7 +125,7 @@ Trainable module 接收 current wrist patch features、robot state、$\abase$、
 \begin{figure}[t]
   \centering
   \includegraphics[width=0.98\linewidth]{figures/fig1_solution_schematic.pdf}
-  \caption{\method{} 架構圖。Frozen \smolvla{} planner 依 SmolVLA input contract 接收 language、top-view RGB、wrist RGB 與 robot state，經 VLM/action-expert stack 以低頻產生 base action chunks 與 cached slow context；frozen DINOv3 wrist encoder 與 trainable fast residual module 則使用 current wrist feedback、state、chunk context 與 selected base action 預測有界 residual。Final action 由 residual 經 clip 與 scale 後加到 selected base action 形成。}
+  \caption{\method{} 架構圖。Frozen \smolvla{} planner 依 SmolVLA input contract 接收 language、top-view RGB、wrist RGB 與 robot state，經 VLM/action-expert stack 以低頻產生 base action chunks 與 cached slow context；frozen DINOv3 wrist encoder 與 trainable fast correction module 則使用 current wrist feedback、state、chunk context 與 selected base action 預測有界 residual。Final action 由 residual 經 clip 與 scale 後加到 selected base action 形成。}
   \label{fig:method-zh}
 \end{figure}
 
@@ -192,7 +192,7 @@ Figure~\ref{fig:calibration-zh} 顯示 plan-50、exec-8 setting 的 Spatial resi
 
 \subsection{Async Planner-Delay Stress Test}
 
-Planner-delay experiment 是本文唯一 async-timestep result。Slow planner 在時間 $t$ 觀察，chunk 在 $d$ 個 control timesteps 後可用，execution 從 chunk index $d$ 開始；fast wrist residual 仍在 current timestep 執行。Figure~\ref{fig:delay-zh} 比較 \method{} 與同一 wrapper 的 disable-fast ablation。$d=0$ 時 disable-fast 較高（68\% 對 64\%）。在 delayed chunks 下，\method{} 於 $d=1,2,3,4$ 維持 $68,72,68,66\%$ success，而 disable-fast 降到 $64,62,61,56\%$。
+Planner-delay experiment 是本文唯一 async-timestep result。Slow planner 在時間 $t$ 觀察，chunk 在 $d$ 個 control timesteps 後可用，execution 從 chunk index $d$ 開始；fast wrist correction 仍在 current timestep 執行。Figure~\ref{fig:delay-zh} 比較 \method{} 與同一 wrapper 的 disable-fast ablation。$d=0$ 時 disable-fast 較高（68\% 對 64\%）。在 delayed chunks 下，\method{} 於 $d=1,2,3,4$ 維持 $68,72,68,66\%$ success，而 disable-fast 降到 $64,62,61,56\%$。
 
 \begin{figure}[t]
   \centering
@@ -241,7 +241,7 @@ Wrist path 是 local。當 wrist camera 看見相關 gripper-relative geometry �
 
 \section{Conclusion}
 
-\method{} 問的是：凍結的 VLA action chunk 能否透過小型 wrist-camera residual head 變得更 reactive？Spatial-only results 支持一個精確 claim：clipped wrist residuals 在 chunks 變 stale 時有幫助，尤其是 longer execution intervals 與 async planner-delay settings；但當 slow planner 每步 replan 時可能有害。因此 \method{} 最適合被理解為 frozen VLA chunks 的 bounded local correction layer。
+\method{} 問的是：凍結的 VLA action chunk 能否透過小型 fast wrist correction head 變得更 reactive？Spatial-only results 支持一個精確 claim：clipped wrist corrections 在 chunks 變 stale 時有幫助，尤其是 longer execution intervals 與 async planner-delay settings；但當 slow planner 每步 replan 時可能有害。因此 \method{} 最適合被理解為 frozen VLA chunks 的 bounded local correction layer。
 
 \appendix
 
@@ -276,7 +276,7 @@ Figure~\ref{fig:appendix-success-zh} summarizes generated Spatial 10x10 sweeps �
 
 以下項目刻意以紅字標記，因為它們尚不足以支撐 main-text claims：
 \begin{itemize}
-  \item \textcolor{red}{Dual-view DINO fast residual ablation}：訓練 wrist + third-person image fast model。
+  \item \textcolor{red}{Dual-view DINO fast correction ablation}：訓練 wrist + third-person image fast model。
   \item \textcolor{red}{Latent-context ablation}：移除 residual head 中的 $z_{\mathrm{goal}}/z_{\mathrm{phase}}$。
   \item \textcolor{red}{Chunk-age/stale-target training}：用 delayed base chunks 訓練 residual targets。
   \item \textcolor{red}{No-residual-clip control sweeps}：把 no-clip controls 擴展到目前 calibration evidence 之外。

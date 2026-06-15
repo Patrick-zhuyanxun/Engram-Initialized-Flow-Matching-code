@@ -52,7 +52,7 @@ Protocol:
 - HFRVLA did not degrade over `d=0..4`; its success rates were 64%, 68%, 72%, 68%, and 66%.
 - Disable-fast degraded from 68% at `d=0` to 56% at `d=4`, a -12 pp drop.
 - The HFRVLA minus disable-fast margin changed from -4 pp at `d=0` to +4, +10, +7, and +10 pp at `d=1..4`.
-- The strongest defensible claim from this single-seed 100-episode/row run is that current wrist feedback prevents the degradation seen when the same wrapper disables the fast residual under async-timestep planner latency.
+- The strongest defensible claim from this single-seed 100-episode/row run is that current wrist feedback prevents the degradation seen when the same wrapper disables the fast correction path under async-timestep planner latency.
 - Treat exact percentages as provisional until replicated across additional seeds or task-order variants.
 
 ## Artifacts

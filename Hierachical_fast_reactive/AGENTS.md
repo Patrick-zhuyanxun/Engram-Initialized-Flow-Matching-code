@@ -9,21 +9,24 @@ workspace.
 This project is **HFRVLA: Hierarchical Fast-Reactive VLA**.
 
 Core idea: wrap a frozen SmolVLA as the slow planner and train a small
-wrist-camera fast reactive residual module. At inference:
+fast wrist correction module. At inference:
 
 ```text
-a_final = SafetyLayer(a_base + gate * clip(delta_a))
+a_final = a_base + alpha * clip(delta_a)
 ```
 
-`a_base` is the SmolVLA chunk action. The trainable fast module emits
-`delta_a`, `gate`, and an optional training-only `contact_aux` signal.
+`a_base` is the SmolVLA chunk action. The active trainable fast module emits a
+7D `delta_a`. The older GRU/gate/contact auxiliary path is retained only for
+legacy checkpoint provenance and should not be revived unless explicitly
+requested.
 
 ## Main Source Files
 
 - Policy plugin: `policy/lerobot_policy_hfrvla/`
 - Policy config: `policy/lerobot_policy_hfrvla/src/lerobot_policy_hfrvla/configuration_hfrvla.py`
 - Policy model: `policy/lerobot_policy_hfrvla/src/lerobot_policy_hfrvla/modeling_hfrvla.py`
-- Fast module: `policy/lerobot_policy_hfrvla/src/lerobot_policy_hfrvla/fast_reactive.py`
+- Legacy gated fast module: `policy/lerobot_policy_hfrvla/src/lerobot_policy_hfrvla/fast_reactive.py`
+- Active wrist-correction module: `policy/lerobot_policy_hfrvla/src/lerobot_policy_hfrvla/fast_wrist_residual.py`
 - Dataset recorder: `scripts/record_hfrvla_libero.py`
 - LeRobot train wrapper: `scripts/train_via_lerobot.py`
 - Checkpoint packager: `scripts/package_hfrvla_checkpoint.py`
@@ -61,12 +64,14 @@ Expected features:
 - `observation.extra.a_base`: SmolVLA predicted base action, shape `(7,)`
 - `observation.extra.k_idx_norm`: chunk position in `[0, 1]`, shape `(1,)`
 - `observation.extra.dino_patches`: DINOv3 wrist patches, shape `(196, 384)`
-- `observation.extra.contact_label`: auxiliary target, shape `(1,)`
+- `observation.extra.contact_label`: legacy auxiliary target, shape `(1,)`
 
 `HFRVLAConfig.observation_delta_indices` and `action_delta_indices` both return
 `list(range(-(seq_len - 1), 1))`, so the LeRobot loader windows all
-`observation.*` keys and `action` to the GRU sequence length. Extras are kept
-out of `input_features` normalization on purpose.
+`observation.*` keys and `action` to the training sequence length. The current
+HFRVLA correction window is `seq_len=2`; the fast-cache remains frame-level and
+does not bake in sequence length. Extras are kept out of `input_features`
+normalization on purpose.
 
 ## Training And Evaluation
 
@@ -105,14 +110,18 @@ export TMPDIR=$HFRVLA_TMP_ROOT/tmp
 
 - Keep SmolVLA frozen unless the user explicitly asks for a different training
   regime. `get_optim_params()` should return trainable fast-module parameters.
+- Keep the active merge as `a_base + alpha * clip(delta_a)`. Do not reintroduce
+  a learned gate, contact auxiliary loss, GRU-centered claim, or gate-adjusted
+  merge unless the user explicitly changes direction.
 - Do not resurrect the legacy `.pt` cache pipeline as the primary training path;
   legacy scripts stay under `scripts/legacy/`.
 - Use `LeRobotDatasetMetadata` when only normalization stats are needed; loading
   a full local-only synthetic dataset can trigger unwanted Hub lookups.
 - When creating a LeRobotDataset v3 manually, always call `dataset.finalize()`
   before pushing or relying on the dataset.
-- Keep `paper/notes/implementation_spec.md` and `docs/training.md` synchronized
-  when architecture, training, or dataset assumptions change.
+- Keep `paper/notes/implementation_spec.md`, `paper/notes/methodology_blueprint.md`,
+  `docs/training.md`, and `paper/README.md` synchronized when architecture,
+  training, paper-target, or dataset assumptions change.
 
 ## Official Docs Captured
 

@@ -28,7 +28,7 @@ The thesis problem is therefore:
 For this project, the slow planner is frozen `HuggingFaceVLA/smolvla_libero`.
 The research question is not "can we train a better VLA from scratch?" It is:
 
-> Can a small wrist-camera residual module correct the next action of a frozen
+> Can a small fast wrist correction module correct the next action of a frozen
 > SmolVLA chunk, especially when the execution step is far from the observation
 > that generated the chunk?
 
@@ -51,7 +51,8 @@ If this chain is missing, the method appears arbitrary.
 
 ### Current Idea
 
-HFRVLA wraps a frozen SmolVLA planner with a lightweight fast residual module.
+HFRVLA wraps a frozen SmolVLA planner with a lightweight fast wrist correction
+module.
 The slow planner provides base action chunks and slow context. The fast path uses
 current wrist-camera DINO patch features, robot state, base action, chunk index,
 and cached slow-planner context to predict a 7D residual:
@@ -138,7 +139,7 @@ Existing VLA and robot foundation model work mainly improves the planner itself
 through scale, data, or architecture. Real-time/action-chunking work improves
 how chunks are generated, scheduled, or streamed. HFRVLA instead studies a
 narrower gap: when a frozen VLA planner already produces action chunks, can a
-small wrist-conditioned residual module repair the next executed action without
+small wrist-conditioned correction module repair the next executed action without
 changing the slow planner?
 
 ### Comparison Matrix To Maintain
@@ -156,7 +157,7 @@ changing the slow planner?
 
 ### Primary RQ
 
-Can a small wrist-camera residual module improve execution of frozen SmolVLA
+Can a small fast wrist correction module improve execution of frozen SmolVLA
 action chunks without fine-tuning the slow planner?
 
 ### Secondary RQs
@@ -165,7 +166,7 @@ action chunks without fine-tuning the slow planner?
 |---|---|---|
 | RQ1 | Under plan=50 synchronous execution sweeps, where does HFRVLA improve over SmolVLA? | `fwr_generated_plan50_exec_10x10_spatial`. |
 | RQ2 | Under matched `planning=execution=replan=K`, where does correction help and where does staleness dominate? | `fwr_generated_matched_chunk_10x10_spatial`. |
-| RQ3 | How sensitive is the residual module to `alpha` and `delta_max`? | `n50_alpha_clip_spatial_50eps` and Figure 4. |
+| RQ3 | How sensitive is the correction module to `alpha` and `delta_max`? | `n50_alpha_clip_spatial_50eps` and Figure 4. |
 | RQ4 | Does the fast path reduce degradation when the planner chunk arrives late? | `async_timestep_planner_delay_eval_sweep`. |
 | RQ5 | What remains unsupported without ablations? | No-wrist, no-DINO, no-latent, no-clip, multi-seed, A2C2 same-backbone comparison. |
 
@@ -190,7 +191,7 @@ Current control tick
           +--> selected base action a_base[k]
           |
           v
-Fast wrist residual module
+Fast wrist correction module
           |
           v
 alpha * clip(delta_a)
@@ -204,7 +205,7 @@ executed action a_final
 1. Slow planner provides global task interpretation and nominal action chunk.
 2. Chunk execution can become stale as local geometry changes.
 3. Wrist DINO patches provide current local visual evidence.
-4. A small residual module predicts bounded correction.
+4. A small correction module predicts a bounded residual.
 5. Success-rate sweeps test whether the correction helps under controlled chunk protocols.
 6. Limitations identify what has not yet been causally proven.
 
@@ -352,7 +353,7 @@ Chapter 1 should be drafted in this order:
 3. Chunking creates stale action execution.
 4. Stale action error is often local and time-varying.
 5. Wrist camera can observe current gripper-relative geometry.
-6. HFRVLA tests a bounded residual correction layer over frozen SmolVLA.
+6. HFRVLA tests a bounded fast wrist correction layer over frozen SmolVLA.
 7. Contributions and claim boundaries.
 
 ## 13. Abstract
@@ -360,7 +361,7 @@ Chapter 1 should be drafted in this order:
 The abstract should mention:
 
 - Frozen SmolVLA slow planner.
-- Wrist-camera DINO residual module.
+- Wrist-camera DINO correction module.
 - Bounded merge.
 - LIBERO-Spatial success-rate evidence.
 - Synchronous sweeps vs async planner-delay sweep.

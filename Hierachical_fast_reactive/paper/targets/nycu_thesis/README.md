@@ -1,6 +1,6 @@
 # NYCU Thesis Target - HFRVLA
 
-Last updated: 2026-06-10
+Last updated: 2026-06-15
 
 This folder maintains the NYCU master's thesis version of HFRVLA. Its purpose is
 not only to produce a final PDF, but to preserve the research process: why the
@@ -33,7 +33,7 @@ LaTeX project.
 Large VLA policies such as SmolVLA can predict action chunks, which reduces how
 often an expensive planner must run. The cost is that later actions in the chunk
 are executed under observations that may already be stale. HFRVLA asks whether a
-small wrist-camera residual module can correct the next action of a frozen
+small fast wrist correction module can correct the next action of a frozen
 SmolVLA chunk without fine-tuning the slow planner.
 
 This problem must appear before the method in the thesis introduction. The
@@ -52,7 +52,7 @@ closed-loop execution failure caused by stale VLA action chunks.
 | Literature notes | `paper/notes/literature_review.md` |
 | Registered results | `experiments/eval_registry/eval_results_master.csv` |
 | Registry summary | `paper/thesis/generated/eval_registry_summary.md` |
-| Workshop paper draft | `paper/src/main.tex`, `paper/src/main_zh.tex` |
+| Long paper draft | `paper/src/main.tex`, `paper/src/main_zh.tex`, `paper/targets/long_paper/README.md` |
 | Review/debate logs | `paper/deliberations/nycu_thesis/review_rounds/` |
 
 ## Maintenance Rules
@@ -63,6 +63,7 @@ closed-loop execution failure caused by stale VLA action chunks.
 4. The method description must be explicit about DINO wrist patches, cached SmolVLA context, chunk index, residual clipping, and the frozen-planner contract.
 5. Unfinished experiments belong in a clearly marked future-work or appendix section, not as main-text evidence.
 6. When a section feels generic, add one of these anchors: local artifact path, protocol variable, failure case, exact dataset feature, registry row group, or hypothesis being tested.
+7. Keep the thesis separate from the long paper at the manuscript level. Reuse shared notes, figures, registry numbers, and verified bibliography entries, but do not force thesis chapters to mirror the long paper section order.
 
 ## Files In This Target Folder
 

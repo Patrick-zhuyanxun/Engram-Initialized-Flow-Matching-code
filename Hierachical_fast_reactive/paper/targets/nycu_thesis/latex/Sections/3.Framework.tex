@@ -8,7 +8,7 @@
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=0.98\textwidth]{fig1_solution_schematic.png}
-  \caption{\method{} 架構圖。Frozen \smolvla{} slow planner 依 SmolVLA input contract 接收 language、top-view RGB、wrist RGB 與 robot state，經 VLM/action-expert stack 以低頻產生 base action chunks 與 cached slow context；frozen DINOv3 wrist encoder 與 trainable fast residual module 使用 current wrist feedback、state、chunk context 與 selected base action 預測有界 residual。Final action 由 residual 經 clip 與 scale 後加到 selected base action 形成。}
+  \caption{\method{} 架構圖。Frozen \smolvla{} slow planner 依 SmolVLA input contract 接收 language、top-view RGB、wrist RGB 與 robot state，經 VLM/action-expert stack 以低頻產生 base action chunks 與 cached slow context；frozen DINOv3 wrist encoder 與 trainable fast correction module 使用 current wrist feedback、state、chunk context 與 selected base action 預測有界 residual。Final action 由 residual 經 clip 與 scale 後加到 selected base action 形成。}
   \label{fig:solution_schematic}
 \end{figure}
 
@@ -22,7 +22,7 @@
   A_t=(a_t^0,a_t^1,\ldots,a_t^{H-1}).
 \end{equation}
 
-在第 $k$ 個 chunk position 執行時，base action 為 $\abase=a_t^k$。若 robot 與環境已經偏離 $A_t$ 生成時的 observation，則 $\abase$ 可能不再是最佳 action。\method{} 以 fast residual module $f_\theta$ 預測：
+在第 $k$ 個 chunk position 執行時，base action 為 $\abase=a_t^k$。若 robot 與環境已經偏離 $A_t$ 生成時的 observation，則 $\abase$ 可能不再是最佳 action。\method{} 以 fast wrist correction module $f_\theta$ 預測：
 
 \begin{equation}
   \deltah=f_\theta(x_t^{wrist},s_t,\abase,k,c_t^{slow}),

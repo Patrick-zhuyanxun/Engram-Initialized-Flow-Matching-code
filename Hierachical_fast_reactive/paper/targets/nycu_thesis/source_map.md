@@ -36,7 +36,7 @@ editing `paper/targets/nycu_thesis/latex/main.tex`.
 | Figure purpose | Current asset | Thesis requirement |
 |---|---|---|
 | Problem schematic | `paper/src/figures/fig1_problem_schematic.*` | Chapter 1 figure. Must show a multi-row Gantt chart where each SmolVLA chunk has a planning row and an execution row; chunk B/C planning starts during the tail of the active execution chunk, becomes ready at the switch, and execution chunks remain back-to-back with no idle gap. It must also show stale/open-loop feedback during long execution and define H/e/K/d in human terms. |
-| Solution schematic | `paper/src/figures/fig1_solution_schematic.*` | Chapter 3 figure. Must show HFRVLA architecture: frozen low-frequency SmolVLA consuming language, top RGB, wrist RGB, and state; frozen DINOv3 wrist features; trainable fast residual module; and clipped/scaled merge with selected base action. |
+| Solution schematic | `paper/src/figures/fig1_solution_schematic.*` | Chapter 3 figure. Must show HFRVLA architecture: frozen low-frequency SmolVLA consuming language, top RGB, wrist RGB, and state; frozen DINOv3 wrist features; trainable fast correction module; and clipped/scaled merge with selected base action. |
 | Plan=50 execution sweep | `paper/src/figures/fig2_plan50_execution_sweep.*` | Success rate only. |
 | Matched chunk sweep | `paper/src/figures/fig3_matched_chunk_sweep.*` | Success rate only. |
 | Residual calibration | `paper/src/figures/fig4_residual_calibration.png` | Use PNG in LaTeX to avoid PDF color artifact. |

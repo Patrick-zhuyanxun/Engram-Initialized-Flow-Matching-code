@@ -15,6 +15,12 @@ Sources:
 Re-reviewed on 2026-05-18 against the live LeRobotDataset v3.0 docs and the
 local LeRobot source under `~/Robotic_infra/lerobot/src/lerobot`.
 
+Active-contract review on 2026-06-15: the current maintained HFRVLA direction
+uses the `fast_wrist` / `fast_wrist_chunk` correction modes on top of frozen
+`HuggingFaceVLA/smolvla_libero`. HFRVLA is the public method name; fast wrist
+correction is the human-readable description. The older GRU/gate/contact design
+is archive history only.
+
 ## 1. Project Identity
 
 `Hierachical_fast_reactive` is the active project for HFRVLA:
@@ -24,15 +30,15 @@ frozen SmolVLA with a small trainable fast reactive module.
 Inference formula:
 
 ```text
-a_final = SafetyLayer(a_base + g * clip(delta_a))
+a_final = a_base + alpha * clip(delta_a)
 ```
 
 Where:
 
 - `a_base`: popped action from the frozen SmolVLA action chunk.
 - `delta_a`: residual action predicted by the fast module.
-- `g`: learned gate.
-- `SafetyLayer`: per-DoF clamp plus velocity limit against previous action.
+- `alpha`: deployment residual scale.
+- `clip(delta_a)`: per-DoF residual cap used at training and inference.
 
 The fast module is driven by wrist-camera DINOv3 patches, robot proprioception,
 the current SmolVLA base action, chunk index, and two SmolVLA hidden summaries:
@@ -166,7 +172,7 @@ Canonical features:
 | `observation.extra.a_base` | float32 | `(7,)` | SmolVLA base action |
 | `observation.extra.k_idx_norm` | float32 | `(1,)` | chunk index normalized to `[0, 1]` |
 | `observation.extra.dino_patches` | float32 | `(196, 384)` | DINOv3 ViT-S/16 wrist patch tokens |
-| `observation.extra.contact_label` | float32 | `(1,)` | training-only auxiliary target |
+| `observation.extra.contact_label` | float32 | `(1,)` | legacy auxiliary label kept in the shared dataset; active HFRVLA correction losses do not use it |
 
 Local note: the current full dataset has `data/chunk-000/*.parquet` and no
 materialized `videos/` directory, even though `meta/info.json` includes a
@@ -189,7 +195,7 @@ Current optimizations already in place:
   from the local parquet files without image columns.
 - A post-load guard checks that the required offline columns are present:
   `state`, `action`, `a_base`, `k_idx_norm`, `z_goal`, `z_phase`,
-  `dino_patches`, and `contact_label`.
+  `dino_patches`, and `contact_label` for compatibility with the shared dataset.
 - For speed-sensitive training, `scripts/build_hfrvla_fastcache.py` can derive
   a compact local cache from the canonical LeRobotDataset. The cache stores the
   offline training columns as contiguous `.npy` arrays, downcasts
@@ -228,9 +234,9 @@ Practical speed levers:
 
 - Prefer the fast-cache backend for real training runs once the canonical
   LeRobotDataset has passed the contract/alignment checks.
-- For fast correction-head ablations, prefer shorter windows first:
-  `SEQ_LEN=4` roughly halves the DINO read payload versus `SEQ_LEN=8`;
-  `SEQ_LEN=1` is the feed-forward no-temporal-context ablation.
+- For current HFRVLA correction ablations, `SEQ_LEN=2` is the normal
+  previous/current window. Longer windows increase DINO read payload and mostly
+  matter for legacy gated GRU runs or explicit temporal experiments.
 - Keep confirming the log line
   `[hfrvla-train] fast-cache dataset backend enabled` or
   `[hfrvla-train] offline dataset column pruning enabled`. If both disappear,
@@ -295,13 +301,21 @@ synthetic local-only repo IDs, which can fall through to Hub downloads.
   - `dinov3_local_weights`
   - `dinov3_arch`
 - DINOv3 shape defaults: `224` image size, `196` patches, `384` hidden dim.
-- Fast module dimensions: cross-attention pool dim `256`, GRU hidden `256`.
-- Heads: `delta_head`, `gate_head`, optional `contact_head`.
-- Curriculum stage lengths:
-  - warmup: delta only
-  - joint: delta + gate + contact
-  - refine: same losses with LR drop
-- `seq_len=8` for GRU windowing.
+- Active correction modes:
+  - `fast_wrist`: stateless current-step HFRVLA correction head.
+  - `fast_wrist_chunk`: chunk-aware HFRVLA correction head using schema v3
+    chunk fields.
+- Legacy mode:
+  - `gated`: original GRU/gate/contact path kept for old checkpoints only.
+- Fast wrist correction controls:
+  - `fast_residual_alpha`
+  - `delta_max`
+  - `fast_wrist_loss_lambda_delta`
+  - `fast_wrist_loss_lambda_final`
+  - `fast_wrist_loss_lambda_residual`
+  - `fast_wrist_loss_lambda_clip`
+- `seq_len=2` is the current HFRVLA previous/current training window; the
+  fast-cache itself remains frame-level and does not bake in `seq_len`.
 - `inference_disable_fast` for alignment tests.
 
 `HFRVLAPolicy`:
@@ -310,22 +324,25 @@ synthetic local-only repo IDs, which can fall through to Hub downloads.
 - Freezes `self.model` when `freeze_smolvla=True`.
 - Wraps `vlm_with_expert.forward` to capture final hidden summaries because
   SmolVLA calls `.forward(...)` directly and normal PyTorch hooks would not fire.
-- Uses `select_action()` to pop SmolVLA chunk actions and apply the fast residual
+- Uses `select_action()` to pop SmolVLA chunk actions and apply the fast correction
   on every control step.
 - Uses `forward()` for training on the LeRobot-native batch layout with
   `observation.extra.*` keys.
 - Returns only fast-module trainable parameters from `get_optim_params()`.
 
-`FastReactiveModule`:
+Active `FastWristResidualModule`:
 
 ```text
 DINOv3 wrist patches
   -> Linear(384 -> 256)
-  -> task-conditioned cross-attention pool using concat(z_goal, z_phase)
-  -> fuse(pooled, proprio, a_base, k_idx_norm, z_phase)
-  -> GRU
-  -> delta/gate/contact heads
+  -> wrist patch pooling / attention
+  -> fuse(wrist context, proprio, a_base, k_idx_norm, z_phase, optional previous delta)
+  -> delta_a
 ```
+
+`FastWristChunkResidualModule` adds access to the generated SmolVLA base-action
+chunk and chunk-step metadata. Both active correction modules are stateless: no
+GRU, no learned gate, and no contact auxiliary head.
 
 ## 8. Training And Evaluation Commands
 

@@ -18,7 +18,6 @@ if [[ -z "$repo_root" ]]; then
   exit 0
 fi
 
-source_md="$repo_root/docs/training.md"
 generator="$repo_root/scripts/generate_training_presentation.py"
 open_slide_root="$repo_root/docs/presentations/hfrvla-training-open-slide"
 open_slide_source="$open_slide_root/slides/hfrvla-training/index.tsx"
@@ -27,12 +26,15 @@ open_slide_standalone_html="$open_slide_root/standalone/index.html"
 open_slide_config="$open_slide_root/open-slide.config.ts"
 open_slide_package="$open_slide_root/package.json"
 open_slide_lock="$open_slide_root/package-lock.json"
-output_html="$repo_root/docs/training_presentation.html"
+eval_master="$repo_root/experiments/eval_registry/eval_results_master.csv"
+output_html="$repo_root/docs/hfrvla_experiment_briefing.html"
+legacy_output_html="$repo_root/docs/training_presentation.html"
 python_bin="${PYTHON_BIN:-python3}"
 
 if [[ ! -f "$output_html" \
-  || "$source_md" -nt "$output_html" \
+  || ! -f "$legacy_output_html" \
   || "$generator" -nt "$output_html" \
+  || "$eval_master" -nt "$output_html" \
   || "$open_slide_source" -nt "$output_html" \
   || "$open_slide_standalone" -nt "$output_html" \
   || "$open_slide_standalone_html" -nt "$output_html" \

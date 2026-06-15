@@ -1,16 +1,16 @@
 # Research Questions — HFRVLA
 
-> Synced with the current A2C2-Wrist / Fast Wrist Residual mainline.
+> Synced with the current HFRVLA fast wrist correction mainline.
 > Last updated: 2026-06-06
 
 ---
 
 ## Primary RQs
 
-**RQ1**: Can a small wrist-camera residual module improve execution of frozen
+**RQ1**: Can a small fast wrist correction module improve execution of frozen
 SmolVLA action chunks without fine-tuning the slow planner?
 
-**RQ2**: Under matched planning/execution protocols, where does wrist residual
+**RQ2**: Under matched planning/execution protocols, where does wrist correction
 correction help, and where does long-horizon chunk staleness still dominate?
 
 **RQ3**: Which residual merge settings (`alpha`, `delta_max`, residual safety
